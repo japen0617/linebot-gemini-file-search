@@ -7,7 +7,11 @@ import aiofiles
 from pathlib import Path
 from typing import Optional
 
-from linebot.models import MessageEvent, TextSendMessage, FileMessage, ImageMessage
+from linebot.models import (
+    MessageEvent, TextSendMessage, FileMessage, ImageMessage,
+    PostbackEvent, TemplateSendMessage, CarouselTemplate, CarouselColumn,
+    PostbackAction
+)
 from linebot.exceptions import InvalidSignatureError
 from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
 from linebot import AsyncLineBotApi, WebhookParser
@@ -124,6 +128,120 @@ async def ensure_file_search_store_exists(store_name: str) -> tuple[bool, str]:
 store_name_cache = {}
 
 
+async def list_documents_in_store(store_name: str) -> list:
+    """
+    List all documents in a file search store.
+    Returns list of document info dicts.
+    """
+    try:
+        # Get actual store name
+        actual_store_name = None
+        if store_name in store_name_cache:
+            actual_store_name = store_name_cache[store_name]
+        else:
+            # Find store by display_name
+            stores = client.file_search_stores.list()
+            for store in stores:
+                if hasattr(store, 'display_name') and store.display_name == store_name:
+                    actual_store_name = store.name
+                    store_name_cache[store_name] = actual_store_name
+                    break
+
+        if not actual_store_name:
+            print(f"Store '{store_name}' not found")
+            return []
+
+        documents = []
+
+        # Try to use SDK method first
+        try:
+            if hasattr(client.file_search_stores, 'documents'):
+                for doc in client.file_search_stores.documents.list(parent=actual_store_name):
+                    documents.append({
+                        'name': doc.name,
+                        'display_name': getattr(doc, 'display_name', 'Unknown'),
+                        'create_time': str(getattr(doc, 'create_time', '')),
+                        'update_time': str(getattr(doc, 'update_time', ''))
+                    })
+            else:
+                # Fallback to REST API
+                import requests
+                url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}/documents"
+                headers = {'Content-Type': 'application/json'}
+                params = {'key': GOOGLE_API_KEY}
+
+                response = requests.get(url, headers=headers, params=params, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+
+                for doc in data.get('documents', []):
+                    documents.append({
+                        'name': doc.get('name', 'N/A'),
+                        'display_name': doc.get('displayName', 'Unknown'),
+                        'create_time': doc.get('createTime', ''),
+                        'update_time': doc.get('updateTime', '')
+                    })
+
+        except Exception as e:
+            print(f"Error with SDK, trying REST API: {e}")
+            # Fallback to REST API
+            import requests
+            url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}/documents"
+            headers = {'Content-Type': 'application/json'}
+            params = {'key': GOOGLE_API_KEY}
+
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            for doc in data.get('documents', []):
+                documents.append({
+                    'name': doc.get('name', 'N/A'),
+                    'display_name': doc.get('displayName', 'Unknown'),
+                    'create_time': doc.get('createTime', ''),
+                    'update_time': doc.get('updateTime', '')
+                })
+
+        print(f"Found {len(documents)} documents in store '{store_name}'")
+        return documents
+
+    except Exception as e:
+        print(f"Error listing documents in store: {e}")
+        return []
+
+
+async def delete_document(document_name: str) -> bool:
+    """
+    Delete a document from file search store.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        # Try to use SDK method first
+        try:
+            if hasattr(client.file_search_stores, 'documents'):
+                client.file_search_stores.documents.delete(name=document_name)
+                print(f"Document deleted successfully: {document_name}")
+                return True
+        except Exception as sdk_error:
+            print(f"SDK delete failed, trying REST API: {sdk_error}")
+
+        # Fallback to REST API
+        import requests
+        url = f"https://generativelanguage.googleapis.com/v1beta/{document_name}"
+        headers = {'Content-Type': 'application/json'}
+        params = {'key': GOOGLE_API_KEY}
+
+        response = requests.delete(url, headers=headers, params=params, timeout=10)
+        response.raise_for_status()
+
+        print(f"Document deleted successfully via REST API: {document_name}")
+        return True
+
+    except Exception as e:
+        print(f"Error deleting document: {e}")
+        return False
+
+
 async def upload_to_file_search_store(file_path: Path, store_name: str, display_name: Optional[str] = None) -> bool:
     """
     Upload a file to Gemini file search store.
@@ -204,7 +322,7 @@ async def query_file_search(query: str, store_name: str) -> str:
         if not actual_store_name:
             # Store doesn't exist - guide user to upload files
             print(f"File search store '{store_name}' not found")
-            return "📁 您還沒有上傳任何檔案。\n\n請先傳送文件檔案（PDF、DOCX、TXT 等）或圖片給我，上傳完成後就可以開始提問了！"
+            return "📁 您還沒有上傳任何檔案。\n\n請先傳送文件檔案（PDF、DOCX、TXT 等）給我，上傳完成後就可以開始提問了！\n\n💡 提示：如果您想分析圖片，請直接傳送圖片給我，我會立即為您分析。"
 
         # Create FileSearch tool with actual store name
         tool = types.Tool(
@@ -233,34 +351,99 @@ async def query_file_search(query: str, store_name: str) -> str:
         print(f"Error querying file search: {e}")
         # Check if error is related to missing store
         if "not found" in str(e).lower() or "does not exist" in str(e).lower():
-            return "📁 您還沒有上傳任何檔案。\n\n請先傳送文件檔案（PDF、DOCX、TXT 等）或圖片給我，上傳完成後就可以開始提問了！"
+            return "📁 您還沒有上傳任何檔案。\n\n請先傳送文件檔案（PDF、DOCX、TXT 等）給我，上傳完成後就可以開始提問了！\n\n💡 提示：如果您想分析圖片，請直接傳送圖片給我，我會立即為您分析。"
         return f"查詢時發生錯誤：{str(e)}"
 
 
-async def handle_file_message(event: MessageEvent, message):
+async def analyze_image_with_gemini(image_path: Path) -> str:
     """
-    Handle file and image messages - download and upload to file search store.
+    Analyze image using Gemini's vision capability.
+    Returns the analysis result text.
     """
-    store_name = get_store_name(event)
+    try:
+        # Read image bytes
+        with open(image_path, 'rb') as f:
+            image_bytes = f.read()
 
-    # Determine file name
-    if isinstance(message, FileMessage):
-        file_name = message.file_name or "unknown_file"
-        message_type = "檔案"
-    elif isinstance(message, ImageMessage):
-        file_name = f"image_{message.id}.jpg"
-        message_type = "圖片"
-    else:
-        return
+        # Determine MIME type based on file extension
+        ext = image_path.suffix.lower()
+        mime_type_map = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp'
+        }
+        mime_type = mime_type_map.get(ext, 'image/jpeg')
 
-    # Download file
-    reply_msg = TextSendMessage(text=f"正在處理您的{message_type}，請稍候...")
+        # Create image part
+        image = types.Part.from_bytes(
+            data=image_bytes,
+            mime_type=mime_type
+        )
+
+        # Generate content with image
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=["請詳細描述這張圖片的內容，包括主要物品、場景、文字等資訊。", image],
+        )
+
+        if response.text:
+            return response.text
+        else:
+            return "抱歉，我無法分析這張圖片。"
+
+    except Exception as e:
+        print(f"Error analyzing image with Gemini: {e}")
+        return f"圖片分析時發生錯誤：{str(e)}"
+
+
+async def handle_image_message(event: MessageEvent, message: ImageMessage):
+    """
+    Handle image messages - analyze using Gemini vision.
+    """
+    file_name = f"image_{message.id}.jpg"
+
+    # Download image
+    reply_msg = TextSendMessage(text="正在分析您的圖片，請稍候...")
     await line_bot_api.reply_message(event.reply_token, reply_msg)
 
     file_path = await download_line_content(message.id, file_name)
 
     if file_path is None:
-        error_msg = TextSendMessage(text=f"{message_type}下載失敗，請重試。")
+        error_msg = TextSendMessage(text="圖片下載失敗，請重試。")
+        await line_bot_api.push_message(event.source.user_id, error_msg)
+        return
+
+    # Analyze image with Gemini
+    analysis_result = await analyze_image_with_gemini(file_path)
+
+    # Clean up local file
+    try:
+        file_path.unlink()
+    except Exception as e:
+        print(f"Error deleting file: {e}")
+
+    # Send analysis result
+    result_msg = TextSendMessage(text=f"📸 圖片分析結果：\n\n{analysis_result}")
+    await line_bot_api.push_message(event.source.user_id, result_msg)
+
+
+async def handle_document_message(event: MessageEvent, message: FileMessage):
+    """
+    Handle file messages - download and upload to file search store.
+    """
+    store_name = get_store_name(event)
+    file_name = message.file_name or "unknown_file"
+
+    # Download file
+    reply_msg = TextSendMessage(text="正在處理您的檔案，請稍候...")
+    await line_bot_api.reply_message(event.reply_token, reply_msg)
+
+    file_path = await download_line_content(message.id, file_name)
+
+    if file_path is None:
+        error_msg = TextSendMessage(text="檔案下載失敗，請重試。")
         await line_bot_api.push_message(event.source.user_id, error_msg)
         return
 
@@ -275,24 +458,130 @@ async def handle_file_message(event: MessageEvent, message):
 
     if success:
         success_msg = TextSendMessage(
-            text=f"✅ {message_type}已成功上傳！\n檔案名稱：{file_name}\n\n現在您可以詢問我關於這個{message_type}的任何問題。"
+            text=f"✅ 檔案已成功上傳！\n檔案名稱：{file_name}\n\n現在您可以詢問我關於這個檔案的任何問題。"
         )
         await line_bot_api.push_message(event.source.user_id, success_msg)
     else:
-        error_msg = TextSendMessage(text=f"{message_type}上傳失敗，請重試。")
+        error_msg = TextSendMessage(text="檔案上傳失敗，請重試。")
         await line_bot_api.push_message(event.source.user_id, error_msg)
+
+
+def is_list_files_intent(text: str) -> bool:
+    """
+    Check if user wants to list files.
+    """
+    list_keywords = [
+        '列出檔案', '列出文件', '顯示檔案', '顯示文件',
+        '查看檔案', '查看文件', '檔案列表', '文件列表',
+        '有哪些檔案', '有哪些文件', '我的檔案', '我的文件',
+        'list files', 'show files', 'my files'
+    ]
+    text_lower = text.lower().strip()
+    return any(keyword in text_lower for keyword in list_keywords)
+
+
+async def send_files_carousel(event: MessageEvent, documents: list):
+    """
+    Send files as LINE Carousel Template.
+    """
+    if not documents:
+        no_files_msg = TextSendMessage(text="📁 目前沒有任何文件。\n\n請先上傳文件檔案，就可以查詢囉！")
+        await line_bot_api.reply_message(event.reply_token, no_files_msg)
+        return
+
+    # LINE Carousel限制最多10個
+    documents = documents[:10]
+
+    columns = []
+    for doc in documents:
+        # 提取檔名（去除路徑部分）
+        display_name = doc.get('display_name', 'Unknown')
+        # 格式化時間
+        create_time = doc.get('create_time', '')
+        if create_time and 'T' in create_time:
+            # 簡化時間顯示 (YYYY-MM-DD HH:MM)
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(create_time.replace('Z', '+00:00'))
+                create_time = dt.strftime('%Y-%m-%d %H:%M')
+            except:
+                create_time = create_time[:16]  # 簡單截斷
+
+        # 建立每個檔案的 Column
+        column = CarouselColumn(
+            thumbnail_image_url='https://via.placeholder.com/1024x1024/4CAF50/FFFFFF?text=File',  # 預設圖片
+            title=display_name[:40],  # LINE 限制標題長度
+            text=f"上傳時間：{create_time[:20]}" if create_time else "文件檔案",
+            actions=[
+                PostbackAction(
+                    label='🗑️ 刪除檔案',
+                    data=f"action=delete_file&doc_name={doc['name']}"
+                )
+            ]
+        )
+        columns.append(column)
+
+    carousel_template = CarouselTemplate(columns=columns)
+    template_message = TemplateSendMessage(
+        alt_text=f'📁 找到 {len(documents)} 個文件',
+        template=carousel_template
+    )
+
+    await line_bot_api.reply_message(event.reply_token, template_message)
+
+
+async def handle_postback(event: PostbackEvent):
+    """
+    Handle postback events (e.g., delete file button clicks).
+    """
+    try:
+        # Parse postback data
+        data = event.postback.data
+        params = dict(param.split('=') for param in data.split('&'))
+
+        action = params.get('action')
+        doc_name = params.get('doc_name')
+
+        if action == 'delete_file' and doc_name:
+            # Delete the document
+            success = await delete_document(doc_name)
+
+            if success:
+                # Extract display name from doc_name for user-friendly message
+                display_name = doc_name.split('/')[-1] if '/' in doc_name else doc_name
+
+                reply_msg = TextSendMessage(
+                    text=f"✅ 檔案已刪除成功！\n\n如需查看剩餘檔案，請輸入「列出檔案」。"
+                )
+            else:
+                reply_msg = TextSendMessage(text="❌ 刪除檔案失敗，請稍後再試。")
+
+            await line_bot_api.reply_message(event.reply_token, reply_msg)
+        else:
+            print(f"Unknown postback action: {action}")
+
+    except Exception as e:
+        print(f"Error handling postback: {e}")
+        error_msg = TextSendMessage(text="處理操作時發生錯誤。")
+        await line_bot_api.reply_message(event.reply_token, error_msg)
 
 
 async def handle_text_message(event: MessageEvent, message):
     """
-    Handle text messages - query the file search store.
+    Handle text messages - query the file search store or list files.
     """
     store_name = get_store_name(event)
     query = message.text
 
     print(f"Received query: {query} for store: {store_name}")
 
-    # Query file search
+    # Check if user wants to list files
+    if is_list_files_intent(query):
+        documents = await list_documents_in_store(store_name)
+        await send_files_carousel(event, documents)
+        return
+
+    # Otherwise, query file search
     response_text = await query_file_search(query, store_name)
 
     # Reply to user
@@ -314,18 +603,22 @@ async def handle_callback(request: Request):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     for event in events:
-        if not isinstance(event, MessageEvent):
-            continue
-
-        if event.message.type == "text":
-            # Process text message
-            await handle_text_message(event, event.message)
-        elif event.message.type == "file":
-            # Process file message
-            await handle_file_message(event, event.message)
-        elif event.message.type == "image":
-            # Process image message
-            await handle_file_message(event, event.message)
+        # Handle PostbackEvent (e.g., delete file button clicks)
+        if isinstance(event, PostbackEvent):
+            await handle_postback(event)
+        # Handle MessageEvent
+        elif isinstance(event, MessageEvent):
+            if event.message.type == "text":
+                # Process text message
+                await handle_text_message(event, event.message)
+            elif event.message.type == "file":
+                # Process file message (upload to file search store)
+                await handle_document_message(event, event.message)
+            elif event.message.type == "image":
+                # Process image message (analyze with Gemini vision)
+                await handle_image_message(event, event.message)
+            else:
+                continue
         else:
             continue
 
