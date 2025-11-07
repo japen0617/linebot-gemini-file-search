@@ -1,237 +1,294 @@
-# LINE Bot with Google Gemini File Search
+# LINE Bot 智能文件助手 📚
 
-## Project Background
+> 一個結合 LINE Bot 與 Google Gemini File Search 的智能文件問答機器人
 
-This project is a LINE bot that uses Google Gemini's File Search capabilities to analyze uploaded documents and images. Users can upload files (PDF, DOCX, images, etc.) to the bot, and then ask questions about the content. The bot maintains separate file search stores for each user or group conversation, enabling personalized document-based Q&A.
+## 🎯 這是什麼？
 
-## Screenshot
+想像一下：你可以把任何 PDF、Word 文件、圖片傳給 LINE Bot，然後直接問它「這份文件在講什麼？」、「幫我整理重點」、「這張圖片裡有什麼？」，Bot 就會用 AI 幫你分析並回答！
 
-![image](https://github.com/user-attachments/assets/2bcbd827-0047-4a3a-8645-f8075d996c10)
+這個專案讓你輕鬆打造一個專屬的文件智能助手，只要：
+1. 📤 傳送文件或圖片給 Bot
+2. 💬 用自然語言提問
+3. 🤖 AI 立即分析並回答
 
-## Features
+## ✨ 功能特色
 
-- **File Upload & Processing**: Upload documents and images through LINE
-  - Supports document files (PDF, DOCX, TXT, etc.)
-  - Supports image files (JPG, PNG, etc.)
-  - Automatic file storage management per user/group
-- **AI-Powered Document Q&A**: Ask questions about uploaded documents
-  - Uses Google Gemini's File Search for accurate answers
-  - Context-aware responses based on document content
-- **Multi-Conversation Support**:
-  - Separate file stores for 1-on-1 conversations (per user)
-  - Shared file stores for group conversations (per group)
-- **Built with FastAPI**: High-performance async processing
-- **Containerized with Docker**: Easy deployment
+### 📁 支援多種檔案格式
+- 📄 文件檔案：PDF、Word (DOCX)、純文字 (TXT) 等
+- 🖼️ 圖片檔案：JPG、PNG 等（可以分析圖片內容！）
+- 🔄 自動上傳並管理檔案
 
-## Technologies Used
+### 🧠 AI 智能問答
+- 使用 Google Gemini 2.5 Flash 模型
+- 基於你上傳的文件內容回答問題
+- 支援繁體中文、英文等多語言
 
-- Python 3.9+
-- FastAPI
-- LINE Messaging API
-- Google Gemini API (with File Search)
-- Google VertexAI (optional alternative to Gemini API)
-- Docker
-- Google Cloud Run (for deployment)
+### 👥 多人協作支援
+- **1 對 1 聊天**：每個人有自己的文件庫（隔離的）
+- **群組聊天**：群組成員共享文件庫（大家都能查詢）
+- 自動識別對話類型，無需手動設定
 
-## Setup
+### 🚀 部署簡單
+- 支援 Docker 容器化部署
+- 可部署到 Google Cloud Run
+- 或在本地開發測試
 
-1. Clone the repository to your local machine.
-
-2. Set the following environment variables:
-   - `ChannelSecret`: Your LINE channel secret
-   - `ChannelAccessToken`: Your LINE channel access token
-   - For Google Gemini API:
-     - `GOOGLE_API_KEY`: Your Google Gemini API key
-   - For VertexAI (alternative to Gemini API):
-     - `GOOGLE_GENAI_USE_VERTEXAI`: Set to "True" to use VertexAI
-     - `GOOGLE_CLOUD_PROJECT`: Your Google Cloud Project ID
-     - `GOOGLE_CLOUD_LOCATION`: Your Google Cloud region (e.g., "us-central1")
-
-3. Install the required dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Start the FastAPI server:
-
-   ```bash
-   uvicorn main:app --reload
-   ```
-
-5. Set up your LINE bot webhook URL to point to your server's endpoint.
-
-## Usage
-
-### Uploading Files
-
-1. Send a document file or image to the LINE bot
-2. The bot will download and upload it to a file search store
-3. You'll receive a confirmation message when the upload is complete
-
-### Asking Questions
-
-1. After uploading files, send any text message with your question
-2. The bot will search through your uploaded documents
-3. You'll receive an AI-generated answer based on the document content
-
-### How File Stores Work
-
-- **1-on-1 Chat**: Each user has their own file store (isolated)
-- **Group Chat**: All members in a group share the same file store
-- Files are automatically organized by conversation context
-
-## Architecture
+## 📸 使用範例
 
 ```
-LINE User → Upload File → LINE Bot → Download → Upload to Gemini File Search Store
-                                                          ↓
-LINE User ← AI Response ← Query File Search ← Text Question
+👤 你: [上傳一份會議記錄.pdf]
+🤖 Bot: ✅ 檔案已成功上傳！
+       檔案名稱：會議記錄.pdf
+
+       現在您可以詢問我關於這個檔案的任何問題。
+
+👤 你: 這次會議的主要決議是什麼？
+🤖 Bot: 根據會議記錄，主要決議包括：
+       1. 下季度預算增加 15%
+       2. 新產品預計 6 月上市
+       3. 人力資源部門將擴編 3 名員工
+       ...
 ```
 
-### Key Components
+## 🛠️ 技術架構
 
-- **`get_store_name()`**: Determines the file search store name based on conversation type
-- **`download_line_content()`**: Downloads files from LINE servers
-- **`upload_to_file_search_store()`**: Uploads files to Gemini File Search
-- **`query_file_search()`**: Queries uploaded documents using AI
-- **`handle_file_message()`**: Processes file/image uploads
-- **`handle_text_message()`**: Processes text queries
+- **Python 3.9+**
+- **FastAPI** - 高效能異步 Web 框架
+- **LINE Messaging API** - LINE Bot 介面
+- **Google Gemini API** - 文件搜尋與 AI 問答
+- **Docker** - 容器化部署
 
-## Deployment Options
+## 📦 快速開始
 
-### Local Development
+### 1️⃣ 環境準備
 
-Use ngrok or similar tools to expose your local server to the internet for webhook access:
+首先，你需要準備這些：
+
+**LINE Bot 設定**
+1. 到 [LINE Developers Console](https://developers.line.biz/console/) 建立一個 Messaging API channel
+2. 取得你的 `Channel Secret` 和 `Channel Access Token`
+
+**Google Gemini API**
+1. 到 [Google AI Studio](https://aistudio.google.com/app/apikey) 建立 API Key
+2. 複製你的 `API Key`
+
+### 2️⃣ 下載專案
+
+```bash
+git clone <你的 repo URL>
+cd linebot-file-search-adk
+```
+
+### 3️⃣ 安裝套件
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4️⃣ 設定環境變數
+
+建立 `.env` 檔案或直接設定環境變數：
+
+```bash
+export ChannelSecret="你的 LINE Channel Secret"
+export ChannelAccessToken="你的 LINE Channel Access Token"
+export GOOGLE_API_KEY="你的 Google Gemini API Key"
+```
+
+### 5️⃣ 啟動服務
+
+```bash
+uvicorn main:app --reload
+```
+
+服務會在 `http://localhost:8000` 啟動
+
+### 6️⃣ 設定 Webhook
+
+如果在本地開發，使用 ngrok 來建立公開的網址：
 
 ```bash
 ngrok http 8000
 ```
 
-### Docker Deployment
+然後到 LINE Developers Console，把 Webhook URL 設定為：
+```
+https://你的-ngrok-網址.ngrok.io/
+```
 
-You can use the included Dockerfile to build and deploy the application:
+## 🎮 使用方式
+
+### 📤 上傳檔案
+
+1. 直接在 LINE 聊天室傳送檔案或圖片
+2. Bot 會回覆「正在處理您的檔案，請稍候...」
+3. 上傳完成後會顯示「✅ 檔案已成功上傳！」
+
+### 💬 開始提問
+
+上傳檔案後，你可以問任何相關問題：
+
+- 「這份文件的重點是什麼？」
+- 「幫我整理成條列式」
+- 「第三章在講什麼？」
+- 「這張圖片裡有哪些物品？」
+- 「根據這份報告，我們應該注意什麼？」
+
+### 📁 檔案管理方式
+
+- **個人聊天**：每個人有獨立的文件庫，只能查詢自己上傳的檔案
+- **群組聊天**：所有群組成員共享同一個文件庫，任何人上傳的檔案都能被查詢
+
+## 🐳 Docker 部署
+
+### 建立映像檔
 
 ```bash
 docker build -t linebot-file-search .
-# For Gemini API:
-docker run -p 8000:8000 \
-  -e ChannelSecret=YOUR_SECRET \
-  -e ChannelAccessToken=YOUR_TOKEN \
-  -e GOOGLE_API_KEY=YOUR_GOOGLE_API_KEY \
-  linebot-file-search
+```
 
-# For VertexAI:
+### 啟動容器
+
+```bash
 docker run -p 8000:8000 \
-  -e ChannelSecret=YOUR_SECRET \
-  -e ChannelAccessToken=YOUR_TOKEN \
-  -e GOOGLE_GENAI_USE_VERTEXAI=True \
-  -e GOOGLE_CLOUD_PROJECT=YOUR_GCP_PROJECT \
-  -e GOOGLE_CLOUD_LOCATION=YOUR_GCP_REGION \
+  -e ChannelSecret=你的SECRET \
+  -e ChannelAccessToken=你的TOKEN \
+  -e GOOGLE_API_KEY=你的API_KEY \
   linebot-file-search
 ```
 
-### Google Cloud Deployment
+## ☁️ 部署到 Google Cloud Run
 
-#### Prerequisites
+### 步驟 1：安裝 Google Cloud SDK
 
-1. Install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
-2. Create a Google Cloud project and enable the following APIs:
-   - Cloud Run API
-   - Container Registry API or Artifact Registry API
-   - Cloud Build API
-   - Vertex AI API (if using VertexAI)
+參考[官方文件](https://cloud.google.com/sdk/docs/install)安裝
 
-#### Steps for Deployment
+### 步驟 2：登入並設定專案
 
-1. Authenticate with Google Cloud:
+```bash
+gcloud auth login
+gcloud config set project 你的專案ID
+```
 
-   ```bash
-   gcloud auth login
-   ```
+### 步驟 3：建立並上傳 Docker 映像
 
-2. Set your Google Cloud project:
+```bash
+gcloud builds submit --tag gcr.io/你的專案ID/linebot-file-search
+```
 
-   ```bash
-   gcloud config set project YOUR_PROJECT_ID
-   ```
+### 步驟 4：部署到 Cloud Run
 
-3. Build and push the Docker image to Google Container Registry:
+```bash
+gcloud run deploy linebot-file-search \
+  --image gcr.io/你的專案ID/linebot-file-search \
+  --platform managed \
+  --region asia-east1 \
+  --allow-unauthenticated \
+  --set-env-vars ChannelSecret=你的SECRET,ChannelAccessToken=你的TOKEN,GOOGLE_API_KEY=你的API_KEY
+```
 
-   ```bash
-   gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/linebot-file-search
-   ```
+### 步驟 5：取得服務網址
 
-4. Deploy to Cloud Run:
+```bash
+gcloud run services describe linebot-file-search \
+  --platform managed \
+  --region asia-east1 \
+  --format 'value(status.url)'
+```
 
-   For Gemini API:
+把這個網址設定到 LINE Bot 的 Webhook URL 就完成了！
 
-   ```bash
-   gcloud run deploy linebot-file-search \
-     --image gcr.io/YOUR_PROJECT_ID/linebot-file-search \
-     --platform managed \
-     --region asia-east1 \
-     --allow-unauthenticated \
-     --set-env-vars ChannelSecret=YOUR_SECRET,ChannelAccessToken=YOUR_TOKEN,GOOGLE_API_KEY=YOUR_GOOGLE_API_KEY
-   ```
+## 🔒 安全性建議
 
-   For VertexAI (recommended for production):
+**不要把敏感資訊寫進程式碼！** 建議使用 Google Secret Manager：
 
-   ```bash
-   gcloud run deploy linebot-file-search \
-     --image gcr.io/YOUR_PROJECT_ID/linebot-file-search \
-     --platform managed \
-     --region asia-east1 \
-     --allow-unauthenticated \
-     --set-env-vars ChannelSecret=YOUR_SECRET,ChannelAccessToken=YOUR_TOKEN,GOOGLE_GENAI_USE_VERTEXAI=True,GOOGLE_CLOUD_PROJECT=YOUR_GCP_PROJECT,GOOGLE_CLOUD_LOCATION=YOUR_GCP_REGION
-   ```
+```bash
+# 建立 secrets
+echo -n "你的SECRET" | gcloud secrets create line-channel-secret --data-file=-
+echo -n "你的TOKEN" | gcloud secrets create line-channel-token --data-file=-
+echo -n "你的API_KEY" | gcloud secrets create google-api-key --data-file=-
+```
 
-   Note: For production, it's recommended to use Secret Manager for storing sensitive environment variables.
+部署時使用 secrets：
 
-5. Get the service URL:
+```bash
+gcloud run deploy linebot-file-search \
+  --image gcr.io/你的專案ID/linebot-file-search \
+  --platform managed \
+  --region asia-east1 \
+  --allow-unauthenticated \
+  --update-secrets=ChannelSecret=line-channel-secret:latest,ChannelAccessToken=line-channel-token:latest,GOOGLE_API_KEY=google-api-key:latest
+```
 
-   ```bash
-   gcloud run services describe linebot-file-search --platform managed --region asia-east1 --format 'value(status.url)'
-   ```
+## 📊 監控與除錯
 
-6. Set the service URL as your LINE Bot webhook URL in the LINE Developer Console.
+部署後可以透過 Google Cloud Console 監控：
 
-#### Setting Up Secrets in Google Cloud (Recommended)
+### 查看 Logs
 
-For better security, store your API keys as secrets:
+```bash
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=linebot-file-search" --limit 50
+```
 
-1. Create secrets for your sensitive values:
+### 檢查服務狀態
 
-   ```bash
-   echo -n "YOUR_SECRET" | gcloud secrets create line-channel-secret --data-file=-
-   echo -n "YOUR_TOKEN" | gcloud secrets create line-channel-token --data-file=-
+直接到 [Cloud Run Console](https://console.cloud.google.com/run) 查看服務狀態、錯誤率、回應時間等指標
 
-   # For Gemini API
-   echo -n "YOUR_GOOGLE_API_KEY" | gcloud secrets create google-api-key --data-file=-
-   ```
+## 💡 使用小技巧
 
-2. Give the Cloud Run service access to these secrets and deploy with them.
+1. **上傳多份文件**：可以連續上傳多份文件，Bot 會記住所有文件並在查詢時搜尋
+2. **重新開始**：想清空文件庫？目前檔案會持續儲存在 Gemini 後端，建議用不同的對話
+3. **支援的檔案類型**：取決於 Google Gemini File API 的支援，大部分常見格式都可以
 
-## Maintenance and Monitoring
+## 🤔 常見問題
 
-After deployment, you can monitor your service through the Google Cloud Console:
+**Q: 為什麼我問問題時 Bot 說「您還沒有上傳任何檔案」？**
+A: 請先上傳至少一個檔案或圖片，Bot 才能根據內容回答問題。
 
-1. View logs:
+**Q: 群組聊天中，其他人上傳的檔案我也能查詢嗎？**
+A: 可以！群組中所有成員共享同一個文件庫。
 
-   ```bash
-   gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=linebot-file-search"
-   ```
+**Q: 檔案會保存多久？**
+A: 檔案會持續保存在 Google Gemini 的後端，除非手動刪除或 store 過期。
 
-2. Check service metrics: Access the Cloud Run dashboard in Google Cloud Console
+**Q: 支援哪些語言？**
+A: Google Gemini 支援多種語言，包括繁體中文、簡體中文、英文、日文等。
 
-3. Set up alerts for error rates or high latency in Cloud Monitoring
+**Q: 可以處理多大的檔案？**
+A: 取決於 Google Gemini File API 的限制，一般文件都沒問題。
 
-## Limitations
+## 🔧 進階設定
 
-- File search stores are persistent in Google Gemini backend
-- Each conversation maintains its own file store
-- Supported file types depend on Google Gemini File API capabilities
+### 修改 AI 模型
 
-## License
+在 `main.py` 第 71 行可以修改使用的模型：
 
-This project is open source and available under the MIT License.
+```python
+MODEL_NAME = "gemini-2.5-flash"  # 可改成其他 Gemini 模型
+```
+
+### 調整回應溫度
+
+在 `main.py` 第 177 行可以調整 AI 的創意程度：
+
+```python
+temperature=0.7,  # 0.0 = 保守精確, 1.0 = 創意發散
+```
+
+## 📝 授權條款
+
+MIT License - 歡迎自由使用、修改、分享！
+
+## 🙌 貢獻
+
+歡迎提交 Issue 或 Pull Request！
+
+## 📚 相關連結
+
+- [Google Gemini File Search 官方文件](https://ai.google.dev/gemini-api/docs/file-search?hl=zh-tw)
+- [LINE Messaging API 文件](https://developers.line.biz/en/docs/messaging-api/)
+- [FastAPI 文件](https://fastapi.tiangolo.com/)
+
+---
+
+⭐ 如果這個專案對你有幫助，請給個 Star 支持一下！

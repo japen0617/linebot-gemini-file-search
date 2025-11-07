@@ -17,7 +17,6 @@ from google import genai
 from google.genai import types
 
 # Configuration
-USE_VERTEX = os.getenv("GOOGLE_GENAI_USE_VERTEXAI") or "False"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
 
 # LINE Bot configuration
@@ -31,29 +30,11 @@ if channel_secret is None:
 if channel_access_token is None:
     print("Specify ChannelAccessToken as environment variable.")
     sys.exit(1)
-if USE_VERTEX == "True":
-    GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
-    GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
-    if not GOOGLE_CLOUD_PROJECT:
-        raise ValueError(
-            "Please set GOOGLE_CLOUD_PROJECT via env var or code when USE_VERTEX is true."
-        )
-    if not GOOGLE_CLOUD_LOCATION:
-        raise ValueError(
-            "Please set GOOGLE_CLOUD_LOCATION via env var or code when USE_VERTEX is true."
-        )
-elif not GOOGLE_API_KEY:
+if not GOOGLE_API_KEY:
     raise ValueError("Please set GOOGLE_API_KEY via env var or code.")
 
-# Initialize GenAI client
-if USE_VERTEX == "True":
-    client = genai.Client(
-        vertexai=True,
-        project=GOOGLE_CLOUD_PROJECT,
-        location=GOOGLE_CLOUD_LOCATION,
-    )
-else:
-    client = genai.Client(api_key=GOOGLE_API_KEY)
+# Initialize GenAI client (Note: File Search API only supports Gemini API, not VertexAI)
+client = genai.Client(api_key=GOOGLE_API_KEY)
 
 print("GenAI client initialized successfully.")
 
