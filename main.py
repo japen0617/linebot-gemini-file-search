@@ -154,38 +154,16 @@ async def list_documents_in_store(store_name: str) -> list:
         documents = []
 
         # Try to use SDK method first
-        try:
-            if hasattr(client.file_search_stores, 'documents'):
-                for doc in client.file_search_stores.documents.list(parent=actual_store_name):
-                    documents.append({
-                        'name': doc.name,
-                        'display_name': getattr(doc, 'display_name', 'Unknown'),
-                        'create_time': str(getattr(doc, 'create_time', '')),
-                        'update_time': str(getattr(doc, 'update_time', ''))
-                    })
-                    print(f"Use SDK list function: File found in store '{store_name}': {doc.name}")
-            else:
-                # Fallback to REST API
-                import requests
-                url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}/documents"
-                headers = {'Content-Type': 'application/json'}
-                params = {'key': GOOGLE_API_KEY}
-
-                response = requests.get(url, headers=headers, params=params, timeout=10)
-                response.raise_for_status()
-                data = response.json()
-
-                for doc in data.get('documents', []):
-                    documents.append({
-                        'name': doc.get('name', 'N/A'),
-                        'display_name': doc.get('displayName', 'Unknown'),
-                        'create_time': doc.get('createTime', ''),
-                        'update_time': doc.get('updateTime', '')
-                    })
-                    print(f"Use REST API list function: File found in store '{store_name}': {doc.name}")
-
-        except Exception as e:
-            print(f"Error with SDK, trying REST API: {e}")
+        if hasattr(client.file_search_stores, 'documents'):
+            for doc in client.file_search_stores.documents.list(parent=actual_store_name):
+                documents.append({
+                    'name': doc.name,
+                    'display_name': getattr(doc, 'display_name', 'Unknown'),
+                    'create_time': str(getattr(doc, 'create_time', '')),
+                    'update_time': str(getattr(doc, 'update_time', ''))
+                })
+                print(f"Use SDK list function: File found in store '{store_name}': {doc.name}")
+        else:
             # Fallback to REST API
             import requests
             url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}/documents"
@@ -204,8 +182,6 @@ async def list_documents_in_store(store_name: str) -> list:
                     'update_time': doc.get('updateTime', '')
                 })
                 print(f"Use REST API list function: File found in store '{store_name}': {doc.name}")
-
-        print(f"Found {len(documents)} documents in store '{store_name}'")
         return documents
 
     except Exception as e:
