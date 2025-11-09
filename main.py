@@ -20,6 +20,9 @@ from linebot import AsyncLineBotApi, WebhookParser
 from google import genai
 from google.genai import types
 
+# File Manager Agent
+from file_manager_agent import FileManagerAgent
+
 # Configuration
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
 
@@ -572,8 +575,11 @@ async def handle_text_message(event: MessageEvent, message):
 
     # Check if user wants to list files
     if is_list_files_intent(query):
-        documents = await list_documents_in_store(store_name)
-        await send_files_carousel(event, documents)
+        # Use File Manager Agent for conversational response
+        agent = FileManagerAgent(store_name, store_name_cache)
+        response_text = await agent.handle_list_files()
+        reply_msg = TextSendMessage(text=response_text)
+        await line_bot_api.reply_message(event.reply_token, reply_msg)
         return
 
     # Otherwise, query file search
