@@ -130,6 +130,10 @@ async def ensure_file_search_store_exists(store_name: str) -> tuple[bool, str]:
 # Cache to store display_name -> actual_name mapping
 store_name_cache = {}
 
+# Cache to store citations/grounding metadata for each user/group
+# Key: store_name, Value: list of grounding chunks
+citations_cache = {}
+
 
 async def list_documents_in_store(store_name: str) -> list:
     """
@@ -284,10 +288,10 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
         return False
 
 
-async def query_file_search(query: str, store_name: str) -> str:
+async def query_file_search(query: str, store_name: str) -> tuple[str, list]:
     """
     Query the file search store using generate_content.
-    Returns the AI response text.
+    Returns (AI response text, list of citations).
     """
     try:
         # Get actual store name from cache or by searching
@@ -312,7 +316,7 @@ async def query_file_search(query: str, store_name: str) -> str:
         if not actual_store_name:
             # Store doesn't exist - guide user to upload files
             print(f"File search store '{store_name}' not found")
-            return "📁 您還沒有上傳任何檔案。\n\n請先傳送文件檔案（PDF、DOCX、TXT 等）給我，上傳完成後就可以開始提問了！\n\n💡 提示：如果您想分析圖片，請直接傳送圖片給我，我會立即為您分析。"
+            return ("📁 您還沒有上傳任何檔案。\n\n請先傳送文件檔案（PDF、DOCX、TXT 等）給我，上傳完成後就可以開始提問了！\n\n💡 提示：如果您想分析圖片，請直接傳送圖片給我，我會立即為您分析。", [])
 
         # Create FileSearch tool with actual store name
         tool = types.Tool(
@@ -331,18 +335,44 @@ async def query_file_search(query: str, store_name: str) -> str:
             )
         )
 
+        # Extract grounding metadata (citations)
+        citations = []
+        try:
+            if hasattr(response, 'candidates') and response.candidates:
+                candidate = response.candidates[0]
+                if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
+                    grounding_chunks = candidate.grounding_metadata.grounding_chunks
+                    for chunk in grounding_chunks:
+                        if hasattr(chunk, 'web') and chunk.web:
+                            # Web source
+                            citations.append({
+                                'type': 'web',
+                                'title': getattr(chunk.web, 'title', 'Unknown'),
+                                'uri': getattr(chunk.web, 'uri', ''),
+                            })
+                        elif hasattr(chunk, 'retrieved_context') and chunk.retrieved_context:
+                            # File search source
+                            citations.append({
+                                'type': 'file',
+                                'title': getattr(chunk.retrieved_context, 'title', 'Unknown'),
+                                'text': getattr(chunk.retrieved_context, 'text', '')[:500],  # Limit to 500 chars
+                            })
+            print(f"Found {len(citations)} citations")
+        except Exception as citation_error:
+            print(f"Error extracting citations: {citation_error}")
+
         # Extract text from response
         if response.text:
-            return response.text
+            return (response.text, citations)
         else:
-            return "抱歉，我無法從文件中找到相關資訊。"
+            return ("抱歉，我無法從文件中找到相關資訊。", [])
 
     except Exception as e:
         print(f"Error querying file search: {e}")
         # Check if error is related to missing store
         if "not found" in str(e).lower() or "does not exist" in str(e).lower():
-            return "📁 您還沒有上傳任何檔案。\n\n請先傳送文件檔案（PDF、DOCX、TXT 等）給我，上傳完成後就可以開始提問了！\n\n💡 提示：如果您想分析圖片，請直接傳送圖片給我，我會立即為您分析。"
-        return f"查詢時發生錯誤：{str(e)}"
+            return ("📁 您還沒有上傳任何檔案。\n\n請先傳送文件檔案（PDF、DOCX、TXT 等）給我，上傳完成後就可以開始提問了！\n\n💡 提示：如果您想分析圖片，請直接傳送圖片給我，我會立即為您分析。", [])
+        return (f"查詢時發生錯誤：{str(e)}", [])
 
 
 async def analyze_image_with_gemini(image_path: Path) -> str:
@@ -573,6 +603,38 @@ async def handle_text_message(event: MessageEvent, message):
 
     print(f"Received query: {query} for store: {store_name}")
 
+    # Check if user wants to view a citation
+    if query.startswith("📖 引用"):
+        # Extract citation number
+        try:
+            citation_num = int(query.replace("📖 引用", "").strip())
+            if store_name in citations_cache and 0 < citation_num <= len(citations_cache[store_name]):
+                citation = citations_cache[store_name][citation_num - 1]
+
+                # Format citation text
+                if citation['type'] == 'file':
+                    citation_text = f"📖 引用 {citation_num}\n\n"
+                    citation_text += f"📄 文件：{citation['title']}\n\n"
+                    citation_text += f"📝 內容：\n{citation['text']}"
+                    if len(citation.get('text', '')) >= 500:
+                        citation_text += "\n\n... (內容過長，已截斷)"
+                elif citation['type'] == 'web':
+                    citation_text = f"📖 引用 {citation_num}\n\n"
+                    citation_text += f"🌐 來源：{citation['title']}\n"
+                    citation_text += f"🔗 連結：{citation['uri']}"
+                else:
+                    citation_text = "無法顯示此引用。"
+
+                reply_msg = TextSendMessage(text=citation_text)
+                await line_bot_api.reply_message(event.reply_token, reply_msg)
+                return
+            else:
+                reply_msg = TextSendMessage(text="找不到此引用，請重新查詢。")
+                await line_bot_api.reply_message(event.reply_token, reply_msg)
+                return
+        except ValueError:
+            pass  # Not a valid citation request, continue normal processing
+
     # Check if user wants to list files
     if is_list_files_intent(query):
         # Use File Manager Agent for conversational response
@@ -583,10 +645,28 @@ async def handle_text_message(event: MessageEvent, message):
         return
 
     # Otherwise, query file search
-    response_text = await query_file_search(query, store_name)
+    response_text, citations = await query_file_search(query, store_name)
+
+    # Store citations in cache (limit to 3 for Quick Reply)
+    if citations:
+        citations_cache[store_name] = citations[:3]
+        print(f"Stored {len(citations_cache[store_name])} citations for {store_name}")
+
+    # Create Quick Reply buttons for citations
+    quick_reply = None
+    if citations:
+        quick_reply_items = []
+        for i, citation in enumerate(citations[:3], 1):  # Limit to 3 citations
+            quick_reply_items.append(
+                QuickReplyButton(action=MessageAction(
+                    label=f"📖 引用{i}",
+                    text=f"📖 引用{i}"
+                ))
+            )
+        quick_reply = QuickReply(items=quick_reply_items)
 
     # Reply to user
-    reply_msg = TextSendMessage(text=response_text)
+    reply_msg = TextSendMessage(text=response_text, quick_reply=quick_reply)
     await line_bot_api.reply_message(event.reply_token, reply_msg)
 
 
