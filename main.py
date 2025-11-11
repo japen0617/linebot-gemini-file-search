@@ -4,6 +4,7 @@ import sys
 import asyncio
 import aiohttp
 import aiofiles
+import urllib.parse
 from pathlib import Path
 from typing import Optional
 
@@ -541,7 +542,6 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
     if success:
         # Create Quick Reply buttons for common actions with specific file name
         # Using Postback instead of MessageAction for better Group chat support
-        import urllib.parse
         quick_reply = QuickReply(items=[
             QuickReplyButton(action=PostbackAction(
                 label="📝 生成檔案摘要",
@@ -664,7 +664,6 @@ async def handle_postback(event: PostbackEvent):
 
         elif action == 'query':
             # Handle file query from Quick Reply
-            import urllib.parse
             prompt = urllib.parse.unquote(params.get('prompt', ''))
             print(f"[DEBUG] Query prompt: {prompt}")
 
