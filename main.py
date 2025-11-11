@@ -23,9 +23,6 @@ from linebot import AsyncLineBotApi, WebhookParser
 from google import genai
 from google.genai import types
 
-# File Manager Agent
-from file_manager_agent import FileManagerAgent
-
 # Configuration
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
 
@@ -235,43 +232,28 @@ async def list_documents_in_store(store_name: str) -> list:
 
         documents = []
 
-        # Try to use SDK method first
-        print(f"[DEBUG] hasattr(client.file_search_stores, 'documents'): {hasattr(client.file_search_stores, 'documents')}")
-        if hasattr(client.file_search_stores, 'documents'):
-            print(f"[DEBUG] Using SDK method to list documents")
-            # 直接迭代，不要用 list() 包裝以避免參數傳遞問題
-            for doc in client.file_search_stores.documents.list(parent=actual_store_name):
-                documents.append({
-                    'name': doc.name,
-                    'display_name': getattr(doc, 'display_name', 'Unknown'),
-                    'create_time': str(getattr(doc, 'create_time', '')),
-                    'update_time': str(getattr(doc, 'update_time', ''))
-                })
-                print(f"[DEBUG] Use SDK list function: File found in store '{store_name}': {doc.name}")
-            print(f"[DEBUG] SDK returned {len(documents)} documents")
-        else:
-            # Fallback to REST API
-            print(f"[DEBUG] Using REST API fallback to list documents")
-            import requests
-            url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}/documents"
-            headers = {'Content-Type': 'application/json'}
-            params = {'key': GOOGLE_API_KEY}
+        # Use REST API to list documents (more stable than SDK)
+        print(f"[DEBUG] Using REST API to list documents")
+        import requests
+        url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}/documents"
+        headers = {'Content-Type': 'application/json'}
+        params = {'key': GOOGLE_API_KEY}
 
-            print(f"[DEBUG] REST API URL: {url}")
-            response = requests.get(url, headers=headers, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+        print(f"[DEBUG] REST API URL: {url}")
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
 
-            print(f"[DEBUG] REST API returned {len(data.get('documents', []))} documents")
+        print(f"[DEBUG] REST API returned {len(data.get('documents', []))} documents")
 
-            for doc in data.get('documents', []):
-                documents.append({
-                    'name': doc.get('name', 'N/A'),
-                    'display_name': doc.get('displayName', 'Unknown'),
-                    'create_time': doc.get('createTime', ''),
-                    'update_time': doc.get('updateTime', '')
-                })
-                print(f"[DEBUG] Use REST API list function: File found in store '{store_name}': {doc.name}")
+        for doc in data.get('documents', []):
+            documents.append({
+                'name': doc.get('name', 'N/A'),
+                'display_name': doc.get('displayName', 'Unknown'),
+                'create_time': doc.get('createTime', ''),
+                'update_time': doc.get('updateTime', '')
+            })
+            print(f"[DEBUG] File found in store '{store_name}': {doc.get('displayName', 'Unknown')}")
 
         print(f"[DEBUG] Returning {len(documents)} documents")
         return documents
