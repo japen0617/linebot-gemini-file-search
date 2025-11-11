@@ -74,6 +74,41 @@ def get_store_name(event: MessageEvent) -> str:
         return f"unknown_{event.source.user_id}"
 
 
+def get_reply_target(event: MessageEvent) -> str:
+    """
+    Get the correct reply target ID based on the message source.
+    Returns group_id for group chat, user_id for 1-on-1 chat.
+    """
+    if event.source.type == "group":
+        return event.source.group_id
+    elif event.source.type == "room":
+        return event.source.room_id
+    else:
+        return event.source.user_id
+
+
+def is_bot_mentioned(event: MessageEvent) -> bool:
+    """
+    Check if the bot is mentioned in a group/room message.
+    Returns True for 1-on-1 chat, or if bot is mentioned in group/room.
+    """
+    # In 1-on-1 chat, always respond
+    if event.source.type == "user":
+        return True
+
+    # In group/room, check if bot is mentioned
+    if hasattr(event.message, 'mention') and event.message.mention:
+        mentionees = event.message.mention.mentionees
+        for mentionee in mentionees:
+            # Check if this mention is for the bot
+            if (hasattr(mentionee, 'isSelf') and mentionee.isSelf) or \
+               (hasattr(mentionee, 'type') and mentionee.type == "user" and
+                hasattr(mentionee, 'isSelf') and mentionee.isSelf):
+                return True
+
+    return False
+
+
 async def download_line_content(message_id: str, file_name: str) -> Optional[Path]:
     """
     Download file content from LINE and save to local uploads directory.
@@ -422,6 +457,7 @@ async def handle_image_message(event: MessageEvent, message: ImageMessage):
     """
     Handle image messages - analyze using Gemini vision.
     """
+    reply_target = get_reply_target(event)
     file_name = f"image_{message.id}.jpg"
 
     # Download image
@@ -432,7 +468,7 @@ async def handle_image_message(event: MessageEvent, message: ImageMessage):
 
     if file_path is None:
         error_msg = TextSendMessage(text="圖片下載失敗，請重試。")
-        await line_bot_api.push_message(event.source.user_id, error_msg)
+        await line_bot_api.push_message(reply_target, error_msg)
         return
 
     # Analyze image with Gemini
@@ -446,7 +482,7 @@ async def handle_image_message(event: MessageEvent, message: ImageMessage):
 
     # Send analysis result
     result_msg = TextSendMessage(text=f"📸 圖片分析結果：\n\n{analysis_result}")
-    await line_bot_api.push_message(event.source.user_id, result_msg)
+    await line_bot_api.push_message(reply_target, result_msg)
 
 
 async def handle_document_message(event: MessageEvent, message: FileMessage):
@@ -454,6 +490,7 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
     Handle file messages - download and upload to file search store.
     """
     store_name = get_store_name(event)
+    reply_target = get_reply_target(event)
     file_name = message.file_name or "unknown_file"
 
     # Download file
@@ -464,7 +501,7 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
 
     if file_path is None:
         error_msg = TextSendMessage(text="檔案下載失敗，請重試。")
-        await line_bot_api.push_message(event.source.user_id, error_msg)
+        await line_bot_api.push_message(reply_target, error_msg)
         return
 
     # Upload to file search store
@@ -488,10 +525,10 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
             text=f"✅ 檔案已成功上傳！\n檔案名稱：{file_name}\n\n現在您可以詢問我關於這個檔案的任何問題。",
             quick_reply=quick_reply
         )
-        await line_bot_api.push_message(event.source.user_id, success_msg)
+        await line_bot_api.push_message(reply_target, success_msg)
     else:
         error_msg = TextSendMessage(text="檔案上傳失敗，請重試。")
-        await line_bot_api.push_message(event.source.user_id, error_msg)
+        await line_bot_api.push_message(reply_target, error_msg)
 
 
 def is_list_files_intent(text: str) -> bool:
@@ -597,7 +634,13 @@ async def handle_postback(event: PostbackEvent):
 async def handle_text_message(event: MessageEvent, message):
     """
     Handle text messages - query the file search store or list files.
+    Only responds in groups if bot is mentioned.
     """
+    # In group/room, only respond if bot is mentioned
+    if not is_bot_mentioned(event):
+        print(f"Bot not mentioned in group/room, skipping response")
+        return
+
     store_name = get_store_name(event)
     query = message.text
 
