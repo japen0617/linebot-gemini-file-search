@@ -203,45 +203,66 @@ async def list_documents_in_store(store_name: str) -> list:
     Returns list of document info dicts.
     """
     try:
+        print(f"[DEBUG] list_documents_in_store called with store_name: {store_name}")
+
         # Get actual store name
         actual_store_name = None
         if store_name in store_name_cache:
             actual_store_name = store_name_cache[store_name]
+            print(f"[DEBUG] Found in cache: {actual_store_name}")
         else:
             # Find store by display_name
+            print(f"[DEBUG] Not in cache, searching for store with display_name: {store_name}")
             stores = client.file_search_stores.list()
+            print(f"[DEBUG] Total stores found: {len(list(stores))}")
+
+            stores = client.file_search_stores.list()  # Re-list because iterator consumed
             for store in stores:
+                store_display_name = getattr(store, 'display_name', None)
+                print(f"[DEBUG] Checking store: {store.name}, display_name: {store_display_name}")
                 if hasattr(store, 'display_name') and store.display_name == store_name:
                     actual_store_name = store.name
                     store_name_cache[store_name] = actual_store_name
+                    print(f"[DEBUG] Found matching store: {actual_store_name}")
                     break
 
         if not actual_store_name:
-            print(f"Store '{store_name}' not found")
+            print(f"[DEBUG] Store '{store_name}' not found - returning empty list")
             return []
+
+        print(f"[DEBUG] Using store: {actual_store_name}")
 
         documents = []
 
         # Try to use SDK method first
+        print(f"[DEBUG] hasattr(client.file_search_stores, 'documents'): {hasattr(client.file_search_stores, 'documents')}")
         if hasattr(client.file_search_stores, 'documents'):
-            for doc in client.file_search_stores.documents.list(parent=actual_store_name):
+            print(f"[DEBUG] Using SDK method to list documents")
+            doc_list = list(client.file_search_stores.documents.list(parent=actual_store_name))
+            print(f"[DEBUG] SDK returned {len(doc_list)} documents")
+
+            for doc in doc_list:
                 documents.append({
                     'name': doc.name,
                     'display_name': getattr(doc, 'display_name', 'Unknown'),
                     'create_time': str(getattr(doc, 'create_time', '')),
                     'update_time': str(getattr(doc, 'update_time', ''))
                 })
-                print(f"Use SDK list function: File found in store '{store_name}': {doc.name}")
+                print(f"[DEBUG] Use SDK list function: File found in store '{store_name}': {doc.name}")
         else:
             # Fallback to REST API
+            print(f"[DEBUG] Using REST API fallback to list documents")
             import requests
             url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}/documents"
             headers = {'Content-Type': 'application/json'}
             params = {'key': GOOGLE_API_KEY}
 
+            print(f"[DEBUG] REST API URL: {url}")
             response = requests.get(url, headers=headers, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
+
+            print(f"[DEBUG] REST API returned {len(data.get('documents', []))} documents")
 
             for doc in data.get('documents', []):
                 documents.append({
@@ -250,11 +271,15 @@ async def list_documents_in_store(store_name: str) -> list:
                     'create_time': doc.get('createTime', ''),
                     'update_time': doc.get('updateTime', '')
                 })
-                print(f"Use REST API list function: File found in store '{store_name}': {doc.name}")
+                print(f"[DEBUG] Use REST API list function: File found in store '{store_name}': {doc.name}")
+
+        print(f"[DEBUG] Returning {len(documents)} documents")
         return documents
 
     except Exception as e:
-        print(f"Error listing documents in store: {e}")
+        print(f"[ERROR] Error listing documents in store: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 
@@ -704,8 +729,9 @@ async def handle_postback(event: PostbackEvent):
 
         elif action == 'list_files':
             # Handle list files request - show carousel with delete buttons
-            print(f"[DEBUG] List files for store: {store_name}")
+            print(f"[DEBUG] Postback list_files action for store: {store_name}")
             documents = await list_documents_in_store(store_name)
+            print(f"[DEBUG] Postback list_documents_in_store returned {len(documents)} documents")
             await send_files_carousel(event, documents)
 
         elif action == 'view_citation':
@@ -769,8 +795,11 @@ async def handle_text_message(event: MessageEvent, message):
 
     # Check if user wants to list files
     if is_list_files_intent(query):
+        print(f"[DEBUG] List files intent detected for query: {query}")
+        print(f"[DEBUG] Store name: {store_name}")
         # Show files carousel with delete buttons
         documents = await list_documents_in_store(store_name)
+        print(f"[DEBUG] list_documents_in_store returned {len(documents)} documents")
         await send_files_carousel(event, documents)
         return
 
