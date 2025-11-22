@@ -471,13 +471,13 @@ https://your-project-name.vercel.app
 https://your-project-name.vercel.app/
 ```
 
-### 方式三：一鍵部署按鈕（Fork 專案後使用）
+### 方式三：一鍵部署按鈕
 
-如果你 fork 了這個專案，可以使用以下按鈕快速部署：
+點擊下方按鈕可以直接 fork 並部署到 Vercel：
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/你的用戶名/linebot-gemini-file-search)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/japen0617/linebot-gemini-file-search)
 
-> ⚠️ **注意**：部署後記得要在 Vercel Dashboard 設定環境變數！
+> ⚠️ **注意**：部署後記得要在 Vercel Dashboard 設定環境變數（ChannelSecret, ChannelAccessToken, GOOGLE_API_KEY）！
 
 ### 📝 Vercel 設定檔說明
 
