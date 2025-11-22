@@ -47,6 +47,7 @@
 ### 🚀 部署簡單
 - 支援 Docker 容器化部署
 - 可部署到 Google Cloud Run
+- 可部署到 Vercel（快速且免費）
 - 或在本地開發測試
 
 ## 📸 使用範例
@@ -366,6 +367,210 @@ gcloud run services describe linebot-file-search \
 ```
 
 把這個網址設定到 LINE Bot 的 Webhook URL 就完成了！
+
+## 🚀 部署到 Vercel
+
+Vercel 是一個現代化的部署平台，提供免費方案，非常適合部署 Python 應用程式。
+
+### 方式一：使用 Vercel CLI 部署
+
+#### 步驟 1：安裝 Vercel CLI
+
+```bash
+npm install -g vercel
+```
+
+#### 步驟 2：登入 Vercel
+
+```bash
+vercel login
+```
+
+#### 步驟 3：部署專案
+
+在專案根目錄執行：
+
+```bash
+vercel
+```
+
+首次部署時會詢問一些設定問題：
+- 選擇 scope（個人或團隊帳號）
+- 確認專案名稱
+- 確認專案路徑
+
+#### 步驟 4：設定環境變數
+
+部署後需要設定環境變數：
+
+```bash
+vercel env add ChannelSecret
+vercel env add ChannelAccessToken
+vercel env add GOOGLE_API_KEY
+```
+
+或在 [Vercel Dashboard](https://vercel.com/dashboard) 的 Settings → Environment Variables 中手動新增。
+
+#### 步驟 5：重新部署以套用環境變數
+
+```bash
+vercel --prod
+```
+
+### 方式二：透過 GitHub 連接自動部署
+
+#### 步驟 1：推送程式碼到 GitHub
+
+確保你的專案已經推送到 GitHub。
+
+#### 步驟 2：連接 Vercel
+
+1. 前往 [Vercel Dashboard](https://vercel.com/dashboard)
+2. 點擊 "Add New..." → "Project"
+3. 選擇 "Import Git Repository"
+4. 授權 Vercel 存取你的 GitHub 帳號
+5. 選擇這個專案的 repository
+
+#### 步驟 3：設定專案
+
+Vercel 會自動偵測到這是 Python 專案（因為有 `vercel.json` 設定檔）：
+
+- **Framework Preset**: Other
+- **Root Directory**: `./`
+- **Build Command**: (留空，Vercel 會自動處理)
+- **Output Directory**: (留空)
+
+#### 步驟 4：設定環境變數
+
+在部署前，點擊 "Environment Variables" 區域新增：
+
+| Name | Value |
+|------|-------|
+| `ChannelSecret` | 你的 LINE Channel Secret |
+| `ChannelAccessToken` | 你的 LINE Channel Access Token |
+| `GOOGLE_API_KEY` | 你的 Google Gemini API Key |
+
+> 💡 **提示**：確保所有環境變數都設定在 Production、Preview 和 Development 環境。
+
+#### 步驟 5：部署
+
+點擊 "Deploy" 按鈕，Vercel 會自動：
+1. 從 GitHub clone 你的程式碼
+2. 安裝相依套件（`requirements.txt`）
+3. 部署應用程式
+
+部署完成後會得到一個 URL，例如：
+```
+https://your-project-name.vercel.app
+```
+
+#### 步驟 6：設定 LINE Bot Webhook
+
+將 Vercel 提供的 URL 設定到 LINE Developers Console：
+```
+https://your-project-name.vercel.app/
+```
+
+### 方式三：一鍵部署按鈕（Fork 專案後使用）
+
+如果你 fork 了這個專案，可以使用以下按鈕快速部署：
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/你的用戶名/linebot-gemini-file-search)
+
+> ⚠️ **注意**：部署後記得要在 Vercel Dashboard 設定環境變數！
+
+### 📝 Vercel 設定檔說明
+
+專案已包含 `vercel.json` 設定檔：
+
+```json
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "main.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "main.py"
+    }
+  ]
+}
+```
+
+這個設定檔告訴 Vercel：
+- 使用 Python runtime (`@vercel/python`)
+- 將所有請求路由到 `main.py`
+
+### 🔄 自動部署設定
+
+連接 GitHub 後，Vercel 會自動：
+- ✅ **主分支推送時自動部署到 Production**
+- ✅ **Pull Request 時自動建立 Preview 部署**
+- ✅ **提供部署狀態通知**
+
+### 💡 Vercel 部署優勢
+
+- **免費方案**：個人專案免費使用
+- **自動 HTTPS**：自動提供 SSL 憑證
+- **全球 CDN**：快速的全球邊緣網路
+- **自動擴展**：根據流量自動調整資源
+- **零停機部署**：部署時不會中斷服務
+- **即時日誌**：在 Dashboard 中查看即時日誌
+
+### 📊 監控與除錯
+
+#### 查看部署日誌
+
+在 [Vercel Dashboard](https://vercel.com/dashboard) 中：
+1. 選擇你的專案
+2. 點擊 "Deployments" 標籤
+3. 選擇特定部署查看詳細日誌
+
+#### 查看執行日誌
+
+在專案頁面：
+1. 點擊 "Functions" 標籤
+2. 選擇 `main.py` function
+3. 查看即時執行日誌和錯誤訊息
+
+#### 常見問題排解
+
+**Q: 部署成功但 Bot 沒有回應？**
+
+A: 檢查以下項目：
+1. 環境變數是否都正確設定
+2. LINE Bot Webhook URL 是否設定正確
+3. Vercel Function 日誌中是否有錯誤訊息
+4. LINE Channel 的 Webhook 設定是否已啟用
+
+**Q: 如何查看錯誤訊息？**
+
+A: 在 Vercel Dashboard → Functions → main.py 中可以看到所有 Python print 輸出和錯誤訊息。
+
+**Q: 可以使用自訂網域嗎？**
+
+A: 可以！在 Vercel Dashboard → Settings → Domains 中新增你的自訂網域。
+
+### 🆚 Vercel vs Google Cloud Run
+
+| 特性 | Vercel | Google Cloud Run |
+|------|--------|------------------|
+| **免費額度** | 100GB 頻寬/月 | 每月 200 萬次請求 |
+| **設定難度** | 簡單 ⭐⭐ | 中等 ⭐⭐⭐⭐ |
+| **部署速度** | 極快 (~1分鐘) | 中等 (~3-5分鐘) |
+| **GitHub 整合** | 原生支援 | 需額外設定 |
+| **自訂網域** | 免費且簡單 | 需手動設定 DNS |
+| **日誌查看** | 即時網頁介面 | gcloud CLI 或 Console |
+| **最適合** | 小型專案、快速部署 | 生產環境、企業應用 |
+
+**建議**：
+- 🚀 **快速測試/個人專案**：使用 Vercel
+- 🏢 **正式上線/企業應用**：使用 Google Cloud Run
+- 💡 **開發階段**：兩者都試試，選擇最適合你的
 
 ## 🔒 安全性建議
 
