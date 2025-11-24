@@ -17,9 +17,10 @@
 ## ✨ 功能特色
 
 ### 📁 支援多種檔案格式
-- 📄 文件檔案：PDF、Word (DOCX)、純文字 (TXT) 等
+- 📄 文件檔案：PDF、Word (DOC/DOCX)、純文字 (TXT) 等
   - 自動上傳到 File Search Store
   - 支援後續文字查詢
+  - **新功能**：.doc 格式會自動轉換為 .docx
 - 🖼️ 圖片檔案：JPG、PNG 等
   - 使用 Gemini 視覺理解能力即時分析
   - 無需上傳，直接回傳分析結果
@@ -170,6 +171,24 @@ cd linebot-file-search-adk
 ```bash
 pip install -r requirements.txt
 ```
+
+**額外依賴：LibreOffice（用於 .doc 格式轉換）**
+
+為了支援舊版 .doc 檔案的自動轉換，需要安裝 LibreOffice：
+
+```bash
+# macOS
+brew install --cask libreoffice
+
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install -y libreoffice
+
+# 驗證安裝
+soffice --version
+```
+
+> 💡 **注意**：如果未安裝 LibreOffice，.doc 檔案將無法上傳，但其他格式（.docx, .pdf 等）仍可正常使用。
 
 ### 4️⃣ 設定環境變數
 

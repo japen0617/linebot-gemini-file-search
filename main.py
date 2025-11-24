@@ -5,6 +5,7 @@ import asyncio
 import aiohttp
 import aiofiles
 import urllib.parse
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -30,7 +31,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
 # Reference: https://ai.google.dev/gemini-api/docs/file-upload
 SUPPORTED_FILE_EXTENSIONS = {
     '.pdf', '.txt', '.docx', '.html', '.htm', '.md',
-    '.csv', '.xml', '.rtf'
+    '.csv', '.xml', '.rtf', '.doc'  # .doc will be auto-converted to .docx
 }
 
 # File format warnings
@@ -41,7 +42,7 @@ UNSUPPORTED_FORMAT_MESSAGE = """
 
 ✅ 支援的格式：
 • PDF (.pdf)
-• Word 文件 (.docx)
+• Word 文件 (.doc, .docx - .doc 會自動轉換)
 • 純文字 (.txt)
 • Markdown (.md)
 • HTML (.html, .htm)
@@ -49,8 +50,7 @@ UNSUPPORTED_FORMAT_MESSAGE = """
 • RTF (.rtf)
 
 💡 建議：
-如果您的檔案是 .doc 格式，請先轉換成 .docx 格式後再上傳。
-您可以使用 Microsoft Word 開啟檔案後，選擇「另存新檔」並選擇 .docx 格式。
+請使用支援的格式重新上傳您的檔案。
 """
 
 # LINE Bot configuration
@@ -194,6 +194,68 @@ def is_supported_file_format(file_name: str) -> tuple[bool, str]:
     """
     _, ext = os.path.splitext(file_name.lower())
     return (ext in SUPPORTED_FILE_EXTENSIONS, ext)
+
+
+def convert_doc_to_docx(input_path: Path) -> tuple[bool, Path | None, str]:
+    """
+    Convert .doc file to .docx using LibreOffice.
+
+    Args:
+        input_path: Path to the .doc file
+
+    Returns:
+        (success, converted_path, message):
+            - success: True if conversion succeeded
+            - converted_path: Path to the converted .docx file (or None if failed)
+            - message: Status or error message
+    """
+    try:
+        # Check if LibreOffice is installed
+        libreoffice_commands = ['soffice', 'libreoffice']
+        libreoffice_path = None
+
+        for cmd in libreoffice_commands:
+            result = subprocess.run(['which', cmd], capture_output=True, text=True)
+            if result.returncode == 0:
+                libreoffice_path = cmd
+                break
+
+        if not libreoffice_path:
+            return False, None, "LibreOffice 未安裝"
+
+        # Prepare output directory and expected output file path
+        output_dir = input_path.parent
+        base_name = input_path.stem  # filename without extension
+        expected_output = output_dir / f"{base_name}.docx"
+
+        # Remove existing output file if it exists
+        if expected_output.exists():
+            expected_output.unlink()
+
+        # Run LibreOffice conversion
+        print(f"[INFO] Converting {input_path.name} to .docx using LibreOffice...")
+        result = subprocess.run([
+            libreoffice_path,
+            '--headless',
+            '--convert-to', 'docx',
+            '--outdir', str(output_dir),
+            str(input_path)
+        ], capture_output=True, text=True, timeout=60)
+
+        # Check if conversion succeeded
+        if result.returncode == 0 and expected_output.exists():
+            print(f"[SUCCESS] Converted to: {expected_output.name}")
+            return True, expected_output, "轉換成功"
+        else:
+            error_msg = result.stderr or result.stdout or "未知錯誤"
+            print(f"[ERROR] Conversion failed: {error_msg}")
+            return False, None, f"轉換失敗：{error_msg}"
+
+    except subprocess.TimeoutExpired:
+        return False, None, "轉換超時（檔案可能太大）"
+    except Exception as e:
+        print(f"[ERROR] Exception during conversion: {e}")
+        return False, None, f"轉換錯誤：{str(e)}"
 
 
 async def ensure_file_search_store_exists(store_name: str) -> tuple[bool, str]:
@@ -590,12 +652,49 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
         await line_bot_api.push_message(reply_target, error_msg)
         return
 
-    # Upload to file search store
-    success = await upload_to_file_search_store(file_path, store_name, file_name)
+    # Check if file is .doc and convert to .docx
+    converted_file_path = None
+    conversion_notice = ""
+    if file_ext == '.doc':
+        print(f"[INFO] Detected .doc file, attempting conversion: {file_name}")
 
-    # Clean up local file
+        # Notify user about conversion
+        converting_msg = TextSendMessage(text="🔄 偵測到 .doc 格式，正在自動轉換為 .docx...")
+        await line_bot_api.push_message(reply_target, converting_msg)
+
+        success_convert, converted_path, message_convert = convert_doc_to_docx(file_path)
+
+        if success_convert and converted_path:
+            print(f"[SUCCESS] Conversion completed: {converted_path.name}")
+            converted_file_path = converted_path
+            # Update file_name to use .docx extension
+            file_name = file_name.rsplit('.', 1)[0] + '.docx'
+            conversion_notice = "\n\n📝 註：檔案已自動從 .doc 轉換為 .docx 格式"
+        else:
+            # Conversion failed
+            error_msg = TextSendMessage(
+                text=f"❌ .doc 檔案轉換失敗\n\n{message_convert}\n\n建議：請使用 Microsoft Word 將檔案另存為 .docx 格式後重新上傳。"
+            )
+            await line_bot_api.push_message(reply_target, error_msg)
+
+            # Clean up downloaded file
+            try:
+                file_path.unlink()
+            except Exception as e:
+                print(f"Error deleting file: {e}")
+            return
+
+    # Use converted file if available, otherwise use original
+    upload_file_path = converted_file_path if converted_file_path else file_path
+
+    # Upload to file search store
+    success = await upload_to_file_search_store(upload_file_path, store_name, file_name)
+
+    # Clean up local files
     try:
         file_path.unlink()
+        if converted_file_path and converted_file_path != file_path:
+            converted_file_path.unlink()
     except Exception as e:
         print(f"Error deleting file: {e}")
 
@@ -618,7 +717,7 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
         ])
 
         success_msg = TextSendMessage(
-            text=f"✅ 檔案已成功上傳！\n檔案名稱：{file_name}\n\n現在您可以詢問我關於這個檔案的任何問題。",
+            text=f"✅ 檔案已成功上傳！\n檔案名稱：{file_name}{conversion_notice}\n\n現在您可以詢問我關於這個檔案的任何問題。",
             quick_reply=quick_reply
         )
         await line_bot_api.push_message(reply_target, success_msg)
@@ -635,7 +734,6 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
 
 請嘗試：
 • 確認檔案可以正常開啟
-• 如果是 .doc 格式，請轉換成 .docx
 • 稍後重試
 """
         error_msg = TextSendMessage(text=error_text)
