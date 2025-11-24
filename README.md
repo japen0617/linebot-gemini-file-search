@@ -76,6 +76,30 @@
        ...
 ```
 
+### 🔄 自動轉換 .doc 檔案
+
+```
+👤 你: [上傳舊版報告.doc]
+🤖 Bot: 正在處理您的檔案，請稍候...
+
+🤖 Bot: 🔄 偵測到 .doc 格式，正在自動轉換為 .docx...
+
+🤖 Bot: ✅ 檔案已成功上傳！
+       檔案名稱：舊版報告.docx
+
+       📝 註：檔案已自動從 .doc 轉換為 .docx 格式
+
+       現在您可以詢問我關於這個檔案的任何問題。
+
+       [Quick Reply 按鈕]
+       📝 生成檔案摘要 | 📌 重點整理 | 📋 列出檔案
+
+👤 你: 這份報告的重點是什麼？
+🤖 Bot: 好的！這份報告主要討論...
+```
+
+> 💡 **自動轉換功能**：系統使用 LibreOffice 自動將 .doc 轉換為 .docx，無需手動操作！
+
 ### 📋 列出檔案（AI 口語化）
 
 ```
@@ -436,8 +460,9 @@ gcloud logging read "resource.type=cloud_run_revision AND resource.labels.servic
    - AI 會用親切的語氣介紹每個檔案和上傳時間
    - 比傳統清單更友善、更易讀
 6. **支援的檔案類型**：
-   - 文件：取決於 Google Gemini File API 的支援
+   - 文件：PDF、Word (DOC/DOCX)、TXT、Markdown、HTML、CSV、RTF 等
    - 圖片：JPG、JPEG、PNG、GIF、WebP
+   - **自動轉換**：舊版 .doc 檔案會自動轉換為 .docx 格式
 
 ## 🤔 常見問題
 
@@ -459,6 +484,12 @@ A: Google Gemini 支援多種語言，包括繁體中文、簡體中文、英文
 
 **Q: 可以處理多大的檔案？**
 A: 取決於 Google Gemini File API 的限制，一般文件都沒問題。圖片建議不超過 10MB。
+
+**Q: 支援舊版 .doc 格式嗎？**
+A: **支援**！系統會自動使用 LibreOffice 將 .doc 轉換為 .docx 格式再上傳。轉換過程完全自動化，無需手動操作。如果轉換失敗（例如未安裝 LibreOffice），系統會提示您手動轉換。
+
+**Q: .doc 轉換需要多久時間？**
+A: 通常只需要幾秒鐘。系統會顯示「🔄 偵測到 .doc 格式，正在自動轉換為 .docx...」的訊息。檔案過大時可能需要更長時間（最多 60 秒超時限制）。
 
 ### 群組使用
 
