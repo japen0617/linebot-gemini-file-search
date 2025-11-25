@@ -25,5 +25,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Import the FastAPI app from main module
 from main import app
 
-# Export app for Vercel - Vercel automatically detects this variable
-# The 'app' variable is available in this module's namespace after import
+# Explicitly assign app for Vercel detection
+# Vercel looks for 'app' or 'handler' variable in the module namespace
+app = app
