@@ -78,10 +78,34 @@ print("GenAI client initialized successfully.")
 
 # Initialize the FastAPI app for LINEBot
 app = FastAPI()
-client_session = aiohttp.ClientSession()
-async_http_client = AiohttpAsyncHttpClient(client_session)
-line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)
+
+# Lazy initialization for async resources
+# These will be initialized when the first request comes in
+# This is needed for Vercel Serverless environment where there's no event loop at module load time
+client_session = None
+async_http_client = None
+line_bot_api = None
+_line_bot_api_lock = asyncio.Lock()
 parser = WebhookParser(channel_secret)
+
+
+async def get_line_bot_api():
+    """
+    Lazy initialization of LINE Bot API client.
+    This is needed for Vercel Serverless environment where there's no event loop at module load time.
+    Uses asyncio.Lock to ensure thread-safe initialization.
+    """
+    global client_session, async_http_client, line_bot_api
+
+    if line_bot_api is None:
+        async with _line_bot_api_lock:
+            # Double-check after acquiring lock
+            if line_bot_api is None:
+                client_session = aiohttp.ClientSession()
+                async_http_client = AiohttpAsyncHttpClient(client_session)
+                line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)
+
+    return line_bot_api
 
 # Create uploads directory if not exists
 # Use UPLOAD_DIR environment variable if set (e.g., /tmp/uploads for Vercel)
@@ -173,7 +197,8 @@ async def download_line_content(message_id: str, file_name: str) -> Optional[Pat
     """
     try:
         # Get message content from LINE
-        message_content = await line_bot_api.get_message_content(message_id)
+        bot_api = await get_line_bot_api()
+        message_content = await bot_api.get_message_content(message_id)
 
         # Extract file extension from original file name
         _, ext = os.path.splitext(file_name)
@@ -663,18 +688,19 @@ async def handle_image_message(event: MessageEvent, message: ImageMessage):
     """
     Handle image messages - analyze using Gemini vision.
     """
+    bot_api = await get_line_bot_api()
     reply_target = get_reply_target(event)
     file_name = f"image_{message.id}.jpg"
 
     # Download image
     reply_msg = TextSendMessage(text="正在分析您的圖片，請稍候...")
-    await line_bot_api.reply_message(event.reply_token, reply_msg)
+    await bot_api.reply_message(event.reply_token, reply_msg)
 
     file_path = await download_line_content(message.id, file_name)
 
     if file_path is None:
         error_msg = TextSendMessage(text="圖片下載失敗，請重試。")
-        await line_bot_api.push_message(reply_target, error_msg)
+        await bot_api.push_message(reply_target, error_msg)
         return
 
     # Analyze image with Gemini
@@ -688,13 +714,14 @@ async def handle_image_message(event: MessageEvent, message: ImageMessage):
 
     # Send analysis result
     result_msg = TextSendMessage(text=f"📸 圖片分析結果：\n\n{analysis_result}")
-    await line_bot_api.push_message(reply_target, result_msg)
+    await bot_api.push_message(reply_target, result_msg)
 
 
 async def handle_document_message(event: MessageEvent, message: FileMessage):
     """
     Handle file messages - download and upload to file search store.
     """
+    bot_api = await get_line_bot_api()
     store_name = get_store_name(event)
     reply_target = get_reply_target(event)
     file_name = message.file_name or "unknown_file"
@@ -704,19 +731,19 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
     if not is_supported:
         # Send unsupported format message
         error_msg = TextSendMessage(text=UNSUPPORTED_FORMAT_MESSAGE.format(extension=file_ext))
-        await line_bot_api.reply_message(event.reply_token, error_msg)
+        await bot_api.reply_message(event.reply_token, error_msg)
         print(f"[WARNING] Unsupported file format: {file_name} ({file_ext})")
         return
 
     # Download file
     reply_msg = TextSendMessage(text="正在處理您的檔案，請稍候...")
-    await line_bot_api.reply_message(event.reply_token, reply_msg)
+    await bot_api.reply_message(event.reply_token, reply_msg)
 
     file_path = await download_line_content(message.id, file_name)
 
     if file_path is None:
         error_msg = TextSendMessage(text="檔案下載失敗，請重試。")
-        await line_bot_api.push_message(reply_target, error_msg)
+        await bot_api.push_message(reply_target, error_msg)
         return
 
     # Check if file is .doc and convert to .docx
@@ -727,7 +754,7 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
 
         # Notify user about conversion
         converting_msg = TextSendMessage(text="🔄 偵測到 .doc 格式，正在自動轉換為 .docx...")
-        await line_bot_api.push_message(reply_target, converting_msg)
+        await bot_api.push_message(reply_target, converting_msg)
 
         success_convert, converted_path, message_convert = convert_doc_to_docx(file_path)
 
@@ -742,7 +769,7 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
             error_msg = TextSendMessage(
                 text=f"❌ .doc 檔案轉換失敗\n\n{message_convert}\n\n建議：請使用 Microsoft Word 將檔案另存為 .docx 格式後重新上傳。"
             )
-            await line_bot_api.push_message(reply_target, error_msg)
+            await bot_api.push_message(reply_target, error_msg)
 
             # Clean up downloaded file
             try:
@@ -757,7 +784,7 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
 
         # Notify user about conversion
         converting_msg = TextSendMessage(text="🔄 偵測到 .ppt 格式，正在自動轉換為 .pptx...\n\n⏳ PPT 檔案較大，轉換可能需要 10-30 秒，請稍候...")
-        await line_bot_api.push_message(reply_target, converting_msg)
+        await bot_api.push_message(reply_target, converting_msg)
 
         success_convert, converted_path, message_convert = convert_ppt_to_pptx(file_path)
 
@@ -772,7 +799,7 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
             error_msg = TextSendMessage(
                 text=f"❌ .ppt 檔案轉換失敗\n\n{message_convert}\n\n建議：請使用 Microsoft PowerPoint 將檔案另存為 .pptx 格式後重新上傳。"
             )
-            await line_bot_api.push_message(reply_target, error_msg)
+            await bot_api.push_message(reply_target, error_msg)
 
             # Clean up downloaded file
             try:
@@ -817,7 +844,7 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
             text=f"✅ 檔案已成功上傳！\n檔案名稱：{file_name}{conversion_notice}\n\n現在您可以詢問我關於這個檔案的任何問題。",
             quick_reply=quick_reply
         )
-        await line_bot_api.push_message(reply_target, success_msg)
+        await bot_api.push_message(reply_target, success_msg)
     else:
         # Provide more helpful error message
         error_text = f"""❌ 檔案上傳失敗
@@ -834,7 +861,7 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
 • 稍後重試
 """
         error_msg = TextSendMessage(text=error_text)
-        await line_bot_api.push_message(reply_target, error_msg)
+        await bot_api.push_message(reply_target, error_msg)
 
 
 def is_list_files_intent(text: str) -> bool:
@@ -862,9 +889,10 @@ async def send_files_carousel(event, documents: list, page: int = 1, store_name:
         page: Current page number (1-indexed)
         store_name: Store name for pagination postback actions
     """
+    bot_api = await get_line_bot_api()
     if not documents:
         no_files_msg = TextSendMessage(text="📁 目前沒有任何文件。\n\n請先上傳文件檔案，就可以查詢囉！")
-        await line_bot_api.reply_message(event.reply_token, no_files_msg)
+        await bot_api.reply_message(event.reply_token, no_files_msg)
         return
 
     # 分頁設定：每頁最多 11 個檔案，第 12 個位置留給分頁控制
@@ -1036,7 +1064,7 @@ async def send_files_carousel(event, documents: list, page: int = 1, store_name:
         contents=carousel_container
     )
 
-    await line_bot_api.reply_message(event.reply_token, flex_message)
+    await bot_api.reply_message(event.reply_token, flex_message)
 
 
 async def handle_postback(event: PostbackEvent):
@@ -1044,6 +1072,7 @@ async def handle_postback(event: PostbackEvent):
     Handle postback events from Quick Reply buttons and other interactions.
     Supports: delete_file, query, list_files, view_citation
     """
+    bot_api = await get_line_bot_api()
     try:
         # Parse postback data
         data = event.postback.data
@@ -1068,7 +1097,7 @@ async def handle_postback(event: PostbackEvent):
                 else:
                     reply_msg = TextSendMessage(text="❌ 刪除檔案失敗，請稍後再試。")
 
-                await line_bot_api.reply_message(event.reply_token, reply_msg)
+                await bot_api.reply_message(event.reply_token, reply_msg)
 
         elif action == 'query':
             # Handle file query from Quick Reply
@@ -1099,10 +1128,10 @@ async def handle_postback(event: PostbackEvent):
 
                 # Reply to user
                 reply_msg = TextSendMessage(text=response_text, quick_reply=quick_reply)
-                await line_bot_api.reply_message(event.reply_token, reply_msg)
+                await bot_api.reply_message(event.reply_token, reply_msg)
             else:
                 reply_msg = TextSendMessage(text="查詢內容不能為空。")
-                await line_bot_api.reply_message(event.reply_token, reply_msg)
+                await bot_api.reply_message(event.reply_token, reply_msg)
 
         elif action == 'list_files':
             # Handle list files request - show carousel with delete buttons
@@ -1138,22 +1167,22 @@ async def handle_postback(event: PostbackEvent):
                     citation_text = "無法顯示此引用。"
 
                 reply_msg = TextSendMessage(text=citation_text)
-                await line_bot_api.reply_message(event.reply_token, reply_msg)
+                await bot_api.reply_message(event.reply_token, reply_msg)
             else:
                 reply_msg = TextSendMessage(text="找不到此引用，請重新查詢。")
-                await line_bot_api.reply_message(event.reply_token, reply_msg)
+                await bot_api.reply_message(event.reply_token, reply_msg)
 
         else:
             print(f"Unknown postback action: {action}")
             reply_msg = TextSendMessage(text="未知的操作。")
-            await line_bot_api.reply_message(event.reply_token, reply_msg)
+            await bot_api.reply_message(event.reply_token, reply_msg)
 
     except Exception as e:
         print(f"Error handling postback: {e}")
         import traceback
         traceback.print_exc()
         error_msg = TextSendMessage(text="處理操作時發生錯誤。")
-        await line_bot_api.reply_message(event.reply_token, error_msg)
+        await bot_api.reply_message(event.reply_token, error_msg)
 
 
 async def handle_text_message(event: MessageEvent, message, bot_user_id: str = ''):
@@ -1171,6 +1200,7 @@ async def handle_text_message(event: MessageEvent, message, bot_user_id: str = '
         print(f"Bot not mentioned in group/room, skipping response")
         return
 
+    bot_api = await get_line_bot_api()
     store_name = get_store_name(event)
     query = message.text
 
@@ -1213,7 +1243,7 @@ async def handle_text_message(event: MessageEvent, message, bot_user_id: str = '
 
     # Reply to user
     reply_msg = TextSendMessage(text=response_text, quick_reply=quick_reply)
-    await line_bot_api.reply_message(event.reply_token, reply_msg)
+    await bot_api.reply_message(event.reply_token, reply_msg)
 
 
 @app.post("/")
@@ -1272,4 +1302,5 @@ async def handle_callback(request: Request):
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up resources on shutdown."""
-    await client_session.close()
+    if client_session:
+        await client_session.close()
