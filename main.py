@@ -74,6 +74,9 @@ if channel_access_token is None:
 if not GOOGLE_API_KEY:
     raise ValueError("Please set GOOGLE_API_KEY via env var or code.")
 
+# Model configuration
+MODEL_NAME = "gemini-2.5-flash"
+
 # Initialize GenAI client (Note: File Search API only supports Gemini API, not VertexAI)
 client = genai.Client(api_key=GOOGLE_API_KEY)
 
@@ -93,9 +96,6 @@ parser = WebhookParser(channel_secret)
 # Create uploads directory if not exists
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
-
-# Model configuration
-MODEL_NAME = "gemini-2.5-flash"
 
 def get_store_name(event) -> str:
     """
