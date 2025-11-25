@@ -326,6 +326,28 @@ docker run -p 8000:8000 \
   linebot-file-search
 ```
 
+## ▲ 部署到 Vercel
+
+Vercel 提供免費的 Serverless 部署方案，適合快速部署和自動擴展。
+
+### 快速部署步驟
+
+1. **連接 GitHub**：在 [Vercel](https://vercel.com/) 登入並匯入此專案
+2. **設定環境變數**：在 Vercel Dashboard 設定以下變數：
+   - `ChannelSecret` - LINE Bot Channel Secret
+   - `ChannelAccessToken` - LINE Bot Channel Access Token
+   - `GOOGLE_API_KEY` - Google Gemini API Key
+3. **部署**：點擊 Deploy 按鈕
+4. **設定 Webhook**：將 Vercel 提供的 URL 設定為 LINE Bot 的 Webhook URL
+
+### ⚠️ Vercel 平台限制
+
+- **執行時間**：Hobby 方案 10 秒，Pro 方案 60 秒
+- **檔案系統**：唯讀（僅 `/tmp` 可寫入）
+- **Cold Start**：首次呼叫可能有 1-3 秒延遲
+
+> 📖 詳細部署說明請參考 [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md)
+
 ## ☁️ 部署到 Google Cloud Run
 
 ### 步驟 1：安裝 Google Cloud SDK
