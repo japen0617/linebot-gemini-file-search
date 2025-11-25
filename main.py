@@ -80,8 +80,9 @@ line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)
 parser = WebhookParser(channel_secret)
 
 # Create uploads directory if not exists
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+# Use UPLOAD_DIR environment variable if set (e.g., /tmp/uploads for Vercel)
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Model configuration
 MODEL_NAME = "gemini-2.5-flash"
