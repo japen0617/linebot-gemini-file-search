@@ -85,6 +85,7 @@ app = FastAPI()
 client_session = None
 async_http_client = None
 line_bot_api = None
+_line_bot_api_lock = asyncio.Lock()
 parser = WebhookParser(channel_secret)
 
 
@@ -92,13 +93,17 @@ async def get_line_bot_api():
     """
     Lazy initialization of LINE Bot API client.
     This is needed for Vercel Serverless environment where there's no event loop at module load time.
+    Uses asyncio.Lock to ensure thread-safe initialization.
     """
     global client_session, async_http_client, line_bot_api
 
     if line_bot_api is None:
-        client_session = aiohttp.ClientSession()
-        async_http_client = AiohttpAsyncHttpClient(client_session)
-        line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)
+        async with _line_bot_api_lock:
+            # Double-check after acquiring lock
+            if line_bot_api is None:
+                client_session = aiohttp.ClientSession()
+                async_http_client = AiohttpAsyncHttpClient(client_session)
+                line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)
 
     return line_bot_api
 
