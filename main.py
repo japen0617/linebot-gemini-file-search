@@ -40,6 +40,23 @@ SUPPORTED_FILE_EXTENSIONS = {
     '.pptx'   # .pptx is natively supported
 }
 
+# MIME type mapping for supported file formats
+# Required in Vercel environment where SDK auto-detection may fail
+MIME_TYPE_MAP = {
+    '.pdf': 'application/pdf',
+    '.txt': 'text/plain',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.doc': 'application/msword',
+    '.html': 'text/html',
+    '.htm': 'text/html',
+    '.md': 'text/markdown',
+    '.csv': 'text/csv',
+    '.xml': 'application/xml',
+    '.rtf': 'application/rtf',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.ppt': 'application/vnd.ms-powerpoint',
+}
+
 # File format warnings
 UNSUPPORTED_FORMAT_MESSAGE = """
 ⚠️ 檔案格式不支援
@@ -561,13 +578,18 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
             # Cache the mapping
             store_name_cache[store_name] = actual_store_name
 
-        # Upload to file search store
-        # actual_store_name is the API-generated name (e.g., fileSearchStores/xxx)
-        # display_name is the custom display name for the file (used in citations)
-        # Note: Do NOT set mime_type - let the SDK auto-detect it from the file path
+        # Build config dict with display_name and mime_type
+        # mime_type is required in Vercel environment where SDK auto-detection may fail
         config_dict = {}
         if display_name:
             config_dict['display_name'] = display_name
+
+        # Set mime_type based on file extension
+        # This is needed because SDK may not auto-detect mime_type correctly in serverless environments
+        file_ext = file_path.suffix.lower()
+        if file_ext in MIME_TYPE_MAP:
+            config_dict['mime_type'] = MIME_TYPE_MAP[file_ext]
+            print(f"Setting mime_type in config: {MIME_TYPE_MAP[file_ext]} for extension: {file_ext}")
 
         operation = client.file_search_stores.upload_to_file_search_store(
             file_search_store_name=actual_store_name,
