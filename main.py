@@ -40,6 +40,22 @@ SUPPORTED_FILE_EXTENSIONS = {
     '.pptx'   # .pptx is natively supported
 }
 
+# MIME type mapping for supported file formats
+MIME_TYPE_MAP = {
+    '.pdf': 'application/pdf',
+    '.txt': 'text/plain',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.doc': 'application/msword',
+    '.html': 'text/html',
+    '.htm': 'text/html',
+    '.md': 'text/markdown',
+    '.csv': 'text/csv',
+    '.xml': 'application/xml',
+    '.rtf': 'application/rtf',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.ppt': 'application/vnd.ms-powerpoint',
+}
+
 # File format warnings
 UNSUPPORTED_FORMAT_MESSAGE = """
 ⚠️ 檔案格式不支援
@@ -567,6 +583,12 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
         config_dict = {}
         if display_name:
             config_dict['display_name'] = display_name
+
+        # Set mime_type based on file extension to avoid auto-detection issues
+        file_ext = file_path.suffix.lower()
+        if file_ext in MIME_TYPE_MAP:
+            config_dict['mime_type'] = MIME_TYPE_MAP[file_ext]
+            print(f"Setting mime_type to: {MIME_TYPE_MAP[file_ext]}")
 
         operation = client.file_search_stores.upload_to_file_search_store(
             file_search_store_name=actual_store_name,
