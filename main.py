@@ -587,9 +587,10 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
         # Set mime_type based on file extension
         # This is needed because SDK may not auto-detect mime_type correctly in serverless environments
         file_ext = file_path.suffix.lower()
-        if file_ext in MIME_TYPE_MAP:
-            config_dict['mime_type'] = MIME_TYPE_MAP[file_ext]
-            print(f"Setting mime_type in config: {MIME_TYPE_MAP[file_ext]} for extension: {file_ext}")
+        mime_type = MIME_TYPE_MAP.get(file_ext)
+        if mime_type:
+            config_dict['mime_type'] = mime_type
+            print(f"Setting mime_type in config: {mime_type} for extension: {file_ext}")
 
         operation = client.file_search_stores.upload_to_file_search_store(
             file_search_store_name=actual_store_name,
