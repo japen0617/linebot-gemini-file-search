@@ -40,22 +40,6 @@ SUPPORTED_FILE_EXTENSIONS = {
     '.pptx'   # .pptx is natively supported
 }
 
-# MIME type mapping for supported file formats
-MIME_TYPE_MAP = {
-    '.pdf': 'application/pdf',
-    '.txt': 'text/plain',
-    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    '.doc': 'application/msword',
-    '.html': 'text/html',
-    '.htm': 'text/html',
-    '.md': 'text/markdown',
-    '.csv': 'text/csv',
-    '.xml': 'application/xml',
-    '.rtf': 'application/rtf',
-    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    '.ppt': 'application/vnd.ms-powerpoint',
-}
-
 # File format warnings
 UNSUPPORTED_FORMAT_MESSAGE = """
 ⚠️ 檔案格式不支援
@@ -580,29 +564,15 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
         # Upload to file search store
         # actual_store_name is the API-generated name (e.g., fileSearchStores/xxx)
         # display_name is the custom display name for the file (used in citations)
-
-        # Determine mime_type based on file extension
-        file_ext = file_path.suffix.lower()
-        mime_type = MIME_TYPE_MAP.get(file_ext)
-        if mime_type:
-            print(f"Using mime_type: {mime_type} for file extension: {file_ext}")
-
-        # Build config using types.UploadToFileSearchStoreConfig (NOT a plain dict)
-        # This is required by the Google GenAI SDK
-        config_kwargs = {}
+        # Note: Do NOT set mime_type - let the SDK auto-detect it from the file path
+        config_dict = {}
         if display_name:
-            config_kwargs['display_name'] = display_name
-        if mime_type:
-            config_kwargs['mime_type'] = mime_type
+            config_dict['display_name'] = display_name
 
-        # Create the config object (or None if no config needed)
-        config = types.UploadToFileSearchStoreConfig(**config_kwargs) if config_kwargs else None
-
-        # Upload to file search store
         operation = client.file_search_stores.upload_to_file_search_store(
             file_search_store_name=actual_store_name,
             file=str(file_path),
-            config=config
+            config=config_dict if config_dict else None
         )
 
         # Wait for operation to complete (with timeout)
