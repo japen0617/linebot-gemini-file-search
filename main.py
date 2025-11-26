@@ -584,17 +584,27 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
         if display_name:
             config_dict['display_name'] = display_name
 
-        # Set mime_type based on file extension to avoid auto-detection issues
+        # Determine mime_type based on file extension (as separate parameter)
         file_ext = file_path.suffix.lower()
-        if file_ext in MIME_TYPE_MAP:
-            config_dict['mime_type'] = MIME_TYPE_MAP[file_ext]
-            print(f"Setting mime_type to: {MIME_TYPE_MAP[file_ext]}")
+        mime_type = MIME_TYPE_MAP.get(file_ext)
+        if mime_type:
+            print(f"Using mime_type: {mime_type} for file extension: {file_ext}")
 
-        operation = client.file_search_stores.upload_to_file_search_store(
-            file_search_store_name=actual_store_name,
-            file=str(file_path),
-            config=config_dict if config_dict else None
-        )
+        # Build upload parameters dynamically
+        upload_kwargs = {
+            'file_search_store_name': actual_store_name,
+            'file': str(file_path),
+        }
+
+        # Add config if we have display_name
+        if config_dict:
+            upload_kwargs['config'] = config_dict
+
+        # Add mime_type as a separate top-level parameter (NOT in config)
+        if mime_type:
+            upload_kwargs['mime_type'] = mime_type
+
+        operation = client.file_search_stores.upload_to_file_search_store(**upload_kwargs)
 
         # Wait for operation to complete (with timeout)
         max_wait = 60  # seconds
