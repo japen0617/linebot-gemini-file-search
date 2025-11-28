@@ -639,14 +639,17 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
             # Wait for the import operation to complete (it's a long-running operation)
             max_import_wait = 30
             import_elapsed = 0
-            while not operation.done and import_elapsed < max_import_wait:
+            while (not getattr(operation, 'done', False)) and import_elapsed < max_import_wait:
                 await asyncio.sleep(2)
                 import_elapsed += 2
                 print(f"[INFO] Import operation in progress (waited {import_elapsed}s)...")
             
-            if operation.done:
-                if operation.error:
-                    print(f"[ERROR] Import operation failed: {operation.error}")
+            # Check if operation completed successfully
+            if getattr(operation, 'done', False):
+                # Check for errors
+                operation_error = getattr(operation, 'error', None)
+                if operation_error:
+                    print(f"[ERROR] Import operation failed: {operation_error}")
                     return False
                 print(f"[SUCCESS] File imported to store: {store_name}")
                 return True
