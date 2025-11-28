@@ -561,9 +561,21 @@ async def delete_document(document_name: str) -> bool:
 
 async def upload_to_file_search_store(file_path: Path, store_name: str, display_name: Optional[str] = None) -> bool:
     """
-    Upload a file to Gemini file search store.
+    Upload a file to Gemini file search store using a two-step process.
+    
+    This approach is required for Vercel environments where the SDK's 
+    upload_to_file_search_store method fails with complex MIME types 
+    (e.g., application/vnd.openxmlformats-officedocument.wordprocessingml.document).
+    
+    Step 1: Upload file to Google GenAI Files API using client.files.upload()
+            This API handles complex MIME types better.
+    Step 2: Add the uploaded file to File Search Store using REST API.
+    
     Returns True if successful, False otherwise.
     """
+    import io
+    import requests
+    
     try:
         # Check cache first
         if store_name in store_name_cache:
@@ -578,50 +590,84 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
             # Cache the mapping
             store_name_cache[store_name] = actual_store_name
 
-        # Build config dict with display_name and mime_type
-        # mime_type is required in Vercel environment where SDK auto-detection may fail
-        config_dict = {}
-        if display_name:
-            config_dict['display_name'] = display_name
-
-        # Set mime_type based on file extension
-        # This is needed because SDK may not auto-detect mime_type correctly in serverless environments
+        # Get mime_type based on file extension
         file_ext = file_path.suffix.lower()
         mime_type = MIME_TYPE_MAP.get(file_ext)
+        
+        # Step 1: Upload file using client.files.upload()
+        # This API handles complex MIME types better than upload_to_file_search_store
+        print(f"[INFO] Step 1: Uploading file to Files API...")
+        with open(file_path, 'rb') as f:
+            file_content = f.read()
+        
+        file_buffer = io.BytesIO(file_content)
+        
+        upload_config = {'display_name': display_name or file_path.name}
         if mime_type:
-            config_dict['mime_type'] = mime_type
-            print(f"Setting mime_type in config: {mime_type} for extension: {file_ext}")
-
-        operation = client.file_search_stores.upload_to_file_search_store(
-            file_search_store_name=actual_store_name,
-            file=str(file_path),
-            config=config_dict if config_dict else None
+            upload_config['mime_type'] = mime_type
+            print(f"[INFO] Uploading with mime_type: {mime_type}")
+        
+        uploaded_file = client.files.upload(
+            file=file_buffer,
+            config=upload_config
         )
-
-        # Wait for operation to complete (with timeout)
-        max_wait = 60  # seconds
+        print(f"[INFO] File uploaded to Files API: {uploaded_file.name}")
+        
+        # Wait for file to be processed
+        max_wait = 30
         elapsed = 0
-        while not operation.done and elapsed < max_wait:
+        while uploaded_file.state.name == "PROCESSING" and elapsed < max_wait:
             await asyncio.sleep(2)
-            operation = client.operations.get(operation)
+            uploaded_file = client.files.get(name=uploaded_file.name)
             elapsed += 2
-
-        if operation.done:
-            print(f"File uploaded to store '{store_name}': {operation}")
-            return True
-        else:
-            print(f"Upload operation timeout for store '{store_name}'")
+            print(f"[INFO] File state: {uploaded_file.state.name} (waited {elapsed}s)")
+        
+        if uploaded_file.state.name != "ACTIVE":
+            print(f"[ERROR] File not ready after {max_wait}s: {uploaded_file.state.name}")
+            return False
+        
+        print(f"[INFO] File is ACTIVE, proceeding to Step 2...")
+        
+        # Step 2: Add file to File Search Store using REST API
+        print(f"[INFO] Step 2: Adding file to File Search Store...")
+        url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}/documents"
+        headers = {'Content-Type': 'application/json'}
+        params = {'key': GOOGLE_API_KEY}
+        payload = {
+            'displayName': display_name or file_path.name,
+            'uri': uploaded_file.name  # The Files API returns a name in format "files/xxx" which serves as URI
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, params=params, json=payload, timeout=30)
+            
+            if response.status_code == 200:
+                print(f"[SUCCESS] File added to store: {store_name}")
+                return True
+            else:
+                print(f"[ERROR] Failed to add file to store: {response.status_code} - {response.text}")
+                return False
+        except requests.exceptions.Timeout:
+            print(f"[ERROR] Request timeout when adding file to store")
+            return False
+        except requests.exceptions.ConnectionError as conn_err:
+            print(f"[ERROR] Connection error when adding file to store: {conn_err}")
+            return False
+        except requests.exceptions.RequestException as req_err:
+            print(f"[ERROR] Request error when adding file to store: {req_err}")
             return False
 
     except Exception as e:
         error_msg = str(e)
-        print(f"Error uploading to file search store: {error_msg}")
+        print(f"[ERROR] Error uploading to file search store: {error_msg}")
 
         # Check if it's a file format related error
         if '500' in error_msg or 'INTERNAL' in error_msg:
             print(f"[WARNING] Possible unsupported file format or corrupted file: {file_path}")
             print(f"[INFO] File extension: {file_path.suffix}")
 
+        import traceback
+        traceback.print_exc()
         return False
 
 
