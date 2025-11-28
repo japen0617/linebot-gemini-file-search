@@ -569,12 +569,11 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
     
     Step 1: Upload file to Google GenAI Files API using client.files.upload()
             This API handles complex MIME types better.
-    Step 2: Add the uploaded file to File Search Store using REST API.
+    Step 2: Import the uploaded file to File Search Store using SDK's import_file method.
     
     Returns True if successful, False otherwise.
     """
     import io
-    import requests
     
     try:
         # Check cache first
@@ -628,33 +627,35 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
         
         print(f"[INFO] File is ACTIVE, proceeding to Step 2...")
         
-        # Step 2: Add file to File Search Store using REST API
-        print(f"[INFO] Step 2: Adding file to File Search Store...")
-        url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}/documents"
-        headers = {'Content-Type': 'application/json'}
-        params = {'key': GOOGLE_API_KEY}
-        payload = {
-            'displayName': display_name or file_path.name,
-            'uri': uploaded_file.name  # The Files API returns a name in format "files/xxx" which serves as URI
-        }
-        
+        # Step 2: Import file to File Search Store using SDK's import_file method
+        print(f"[INFO] Step 2: Importing file to File Search Store...")
         try:
-            response = requests.post(url, headers=headers, params=params, json=payload, timeout=30)
+            # Use the SDK's import_file method to import the file from Files API to FileSearchStore
+            operation = client.file_search_stores.import_file(
+                file_search_store_name=actual_store_name,
+                file_name=uploaded_file.name  # The Files API returns a name in format "files/xxx"
+            )
             
-            if response.status_code == 200:
-                print(f"[SUCCESS] File added to store: {store_name}")
+            # Wait for the import operation to complete (it's a long-running operation)
+            max_import_wait = 30
+            import_elapsed = 0
+            while not operation.done and import_elapsed < max_import_wait:
+                await asyncio.sleep(2)
+                import_elapsed += 2
+                print(f"[INFO] Import operation in progress (waited {import_elapsed}s)...")
+            
+            if operation.done:
+                if operation.error:
+                    print(f"[ERROR] Import operation failed: {operation.error}")
+                    return False
+                print(f"[SUCCESS] File imported to store: {store_name}")
                 return True
             else:
-                print(f"[ERROR] Failed to add file to store: {response.status_code} - {response.text}")
-                return False
-        except requests.exceptions.Timeout:
-            print(f"[ERROR] Request timeout when adding file to store")
-            return False
-        except requests.exceptions.ConnectionError as conn_err:
-            print(f"[ERROR] Connection error when adding file to store: {conn_err}")
-            return False
-        except requests.exceptions.RequestException as req_err:
-            print(f"[ERROR] Request error when adding file to store: {req_err}")
+                print(f"[WARNING] Import operation still in progress after {max_import_wait}s, but file may be available")
+                return True
+                
+        except Exception as import_err:
+            print(f"[ERROR] Failed to import file to store: {import_err}")
             return False
 
     except Exception as e:
