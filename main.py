@@ -92,7 +92,7 @@ if not GOOGLE_API_KEY:
     raise ValueError("Please set GOOGLE_API_KEY via env var or code.")
 
 # Model configuration
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-3.5-flash"
 
 # Initialize GenAI client (Note: File Search API only supports Gemini API, not VertexAI)
 client = genai.Client(api_key=GOOGLE_API_KEY)

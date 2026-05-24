@@ -21,7 +21,7 @@ class ChatSessionManager:
     - Session cleanup
     """
 
-    def __init__(self, client: genai.Client, model_name: str = "gemini-2.5-flash"):
+    def __init__(self, client: genai.Client, model_name: str = "gemini-3.5-flash"):
         """
         Initialize ChatSessionManager.
 
