@@ -26,6 +26,7 @@ from google.genai import types
 
 # Chat Session Manager
 from chat_session_manager import ChatSessionManager
+from file_search_store_utils import build_import_file_request_body
 
 # Configuration
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
@@ -637,7 +638,7 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
             import_url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}:importFile"
             import_headers = {'Content-Type': 'application/json'}
             import_params = {'key': GOOGLE_API_KEY}
-            import_body = {'file': uploaded_file.name}  # format: "files/xxx"
+            import_body = build_import_file_request_body(uploaded_file.name)
 
             print(f"[INFO] POST {import_url}")
             import_response = req_lib.post(
@@ -676,6 +677,9 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
 
         except Exception as import_err:
             print(f"[ERROR] Failed to import file to store: {import_err}")
+            response = getattr(import_err, 'response', None)
+            if response is not None:
+                print(f"[ERROR] Import response body: {response.text}")
             return False
 
     except Exception as e:
