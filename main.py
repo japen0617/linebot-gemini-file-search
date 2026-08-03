@@ -627,36 +627,53 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
         
         print(f"[INFO] File is ACTIVE, proceeding to Step 2...")
         
-        # Step 2: Import file to File Search Store using SDK's import_file method
-        print(f"[INFO] Step 2: Importing file to File Search Store...")
+        # Step 2: Import file to File Search Store using REST API directly
+        # Using REST API (not SDK) to ensure API key auth is passed correctly.
+        # The SDK's import_file method does not reliably attach the API key,
+        # causing 401 Unauthorized on the :importFile endpoint.
+        print(f"[INFO] Step 2: Importing file to File Search Store via REST API...")
         try:
-            # Use the SDK's import_file method to import the file from Files API to FileSearchStore
-            operation = client.file_search_stores.import_file(
-                file_search_store_name=actual_store_name,
-                file_name=uploaded_file.name  # The Files API returns a name in format "files/xxx"
+            import requests as req_lib
+            import_url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}:importFile"
+            import_headers = {'Content-Type': 'application/json'}
+            import_params = {'key': GOOGLE_API_KEY}
+            import_body = {'file': uploaded_file.name}  # format: "files/xxx"
+
+            print(f"[INFO] POST {import_url}")
+            import_response = req_lib.post(
+                import_url,
+                headers=import_headers,
+                params=import_params,
+                json=import_body,
+                timeout=30,
             )
-            
-            # Wait for the import operation to complete (it's a long-running operation)
-            max_import_wait = 30
+            import_response.raise_for_status()
+            operation_data = import_response.json()
+            print(f"[INFO] Import operation started: {operation_data.get('name', 'unknown')}")
+
+            # Poll the long-running operation until done
+            op_name = operation_data.get('name')
+            max_import_wait = 60
             import_elapsed = 0
-            while (not getattr(operation, 'done', False)) and import_elapsed < max_import_wait:
-                await asyncio.sleep(2)
-                import_elapsed += 2
-                print(f"[INFO] Import operation in progress (waited {import_elapsed}s)...")
-            
-            # Check if operation completed successfully
-            if getattr(operation, 'done', False):
-                # Check for errors
-                operation_error = getattr(operation, 'error', None)
-                if operation_error:
-                    print(f"[ERROR] Import operation failed: {operation_error}")
-                    return False
-                print(f"[SUCCESS] File imported to store: {store_name}")
-                return True
-            else:
-                print(f"[WARNING] Import operation still in progress after {max_import_wait}s, but file may be available")
-                return True
-                
+            if op_name:
+                op_url = f"https://generativelanguage.googleapis.com/v1beta/{op_name}"
+                while import_elapsed < max_import_wait:
+                    await asyncio.sleep(2)
+                    import_elapsed += 2
+                    op_resp = req_lib.get(op_url, params={'key': GOOGLE_API_KEY}, timeout=10)
+                    op_resp.raise_for_status()
+                    op_data = op_resp.json()
+                    if op_data.get('done'):
+                        if op_data.get('error'):
+                            print(f"[ERROR] Import operation failed: {op_data['error']}")
+                            return False
+                        print(f"[SUCCESS] File imported to store: {store_name}")
+                        return True
+                    print(f"[INFO] Import operation in progress (waited {import_elapsed}s)...")
+
+            print(f"[WARNING] Import operation still in progress after {max_import_wait}s, but file may be available")
+            return True
+
         except Exception as import_err:
             print(f"[ERROR] Failed to import file to store: {import_err}")
             return False
