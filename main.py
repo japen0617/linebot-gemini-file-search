@@ -26,7 +26,11 @@ from google.genai import types
 
 # Chat Session Manager
 from chat_session_manager import ChatSessionManager
-from file_search_store_utils import build_import_file_request_body
+from file_search_store_utils import (
+    build_import_failure_details,
+    build_import_file_request_body,
+    is_valid_file_search_store_name,
+)
 
 # Configuration
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
@@ -623,10 +627,19 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
             print(f"[INFO] File state: {uploaded_file.state.name} (waited {elapsed}s)")
         
         if uploaded_file.state.name != "ACTIVE":
-            print(f"[ERROR] File not ready after {max_wait}s: {uploaded_file.state.name}")
+            print(
+                f"[ERROR] File not ready after {max_wait}s: "
+                f"{build_import_failure_details(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name)}"
+            )
             return False
         
         print(f"[INFO] File is ACTIVE, proceeding to Step 2...")
+        if not is_valid_file_search_store_name(actual_store_name):
+            print(
+                f"[ERROR] Invalid file search store name: "
+                f"{build_import_failure_details(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name)}"
+            )
+            return False
         
         # Step 2: Import file to File Search Store using REST API directly
         # Using REST API (not SDK) to ensure API key auth is passed correctly.
@@ -666,7 +679,10 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
                     op_data = op_resp.json()
                     if op_data.get('done'):
                         if op_data.get('error'):
-                            print(f"[ERROR] Import operation failed: {op_data['error']}")
+                            print(
+                                f"[ERROR] Import operation failed: "
+                                f"{build_import_failure_details(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name, operation_error=op_data['error'])}"
+                            )
                             return False
                         print(f"[SUCCESS] File imported to store: {store_name}")
                         return True
@@ -678,8 +694,10 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
         except Exception as import_err:
             print(f"[ERROR] Failed to import file to store: {import_err}")
             response = getattr(import_err, 'response', None)
-            if response is not None:
-                print(f"[ERROR] Import response body: {response.text}")
+            print(
+                f"[ERROR] Import response body: "
+                f"{build_import_failure_details(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name, status_code=getattr(response, 'status_code', None), response_text=getattr(response, 'text', None))}"
+            )
             return False
 
     except Exception as e:
