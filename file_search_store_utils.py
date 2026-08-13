@@ -55,7 +55,7 @@ def build_import_failure_details(
         except json.JSONDecodeError:
             pass
 
-    if operation_error:
+    if operation_error is not None:
         details["operation_error"] = operation_error
 
     return details

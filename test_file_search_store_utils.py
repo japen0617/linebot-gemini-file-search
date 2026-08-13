@@ -76,6 +76,16 @@ class BuildImportFailureDetailsTests(unittest.TestCase):
 
         self.assertEqual(details["response_text"], "")
 
+    def test_keeps_empty_operation_error(self):
+        details = build_import_failure_details(
+            actual_store_name="fileSearchStores/store-123",
+            uploaded_file_name="files/file-123",
+            file_state="ACTIVE",
+            operation_error={},
+        )
+
+        self.assertEqual(details["operation_error"], {})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -682,7 +682,7 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
                         if op_data.get('error'):
                             print(
                                 f"[ERROR] Import operation failed: "
-                                f"{build_import_failure_details(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name, operation_error=op_data['error'])}"
+                                f"{build_import_failure_details(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name, status_code=op_resp.status_code, response_text=op_resp.text, operation_error=op_data['error'])}"
                             )
                             return False
                         print(f"[SUCCESS] File imported to store: {store_name}")
