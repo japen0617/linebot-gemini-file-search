@@ -49,11 +49,16 @@ def build_import_failure_details(
         details["status_code"] = status_code
 
     if response_text is not None:
+        details["response_available"] = True
         details["response_text"] = response_text
+        details["response_json_available"] = False
         try:
             details["response_json"] = json.loads(response_text)
+            details["response_json_available"] = True
         except json.JSONDecodeError:
             pass
+    else:
+        details["response_available"] = False
 
     if operation_error is not None:
         details["operation_error"] = operation_error

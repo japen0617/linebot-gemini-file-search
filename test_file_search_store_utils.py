@@ -50,6 +50,8 @@ class BuildImportFailureDetailsTests(unittest.TestCase):
 
         self.assertEqual(details["status_code"], 400)
         self.assertTrue(details["store_name_valid"])
+        self.assertTrue(details["response_available"])
+        self.assertTrue(details["response_json_available"])
         self.assertEqual(details["response_json"]["error"]["message"], "Bad Request")
 
     def test_includes_operation_error_without_json(self):
@@ -62,6 +64,8 @@ class BuildImportFailureDetailsTests(unittest.TestCase):
         )
 
         self.assertFalse(details["store_name_valid"])
+        self.assertTrue(details["response_available"])
+        self.assertFalse(details["response_json_available"])
         self.assertEqual(details["response_text"], "plain text error")
         self.assertNotIn("response_json", details)
         self.assertEqual(details["operation_error"]["message"], "Import failed")
@@ -74,6 +78,8 @@ class BuildImportFailureDetailsTests(unittest.TestCase):
             response_text="",
         )
 
+        self.assertTrue(details["response_available"])
+        self.assertFalse(details["response_json_available"])
         self.assertEqual(details["response_text"], "")
 
     def test_keeps_empty_operation_error(self):
@@ -85,6 +91,16 @@ class BuildImportFailureDetailsTests(unittest.TestCase):
         )
 
         self.assertEqual(details["operation_error"], {})
+
+    def test_marks_response_unavailable_when_missing(self):
+        details = build_import_failure_details(
+            actual_store_name="fileSearchStores/store-123",
+            uploaded_file_name="files/file-123",
+            file_state="ACTIVE",
+        )
+
+        self.assertFalse(details["response_available"])
+        self.assertNotIn("response_text", details)
 
 
 if __name__ == "__main__":
