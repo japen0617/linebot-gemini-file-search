@@ -27,6 +27,7 @@ from google.genai import types
 # Chat Session Manager
 from chat_session_manager import ChatSessionManager
 from file_search_store_utils import (
+    build_import_context,
     build_import_failure_details,
     build_import_file_request_body,
     is_valid_file_search_store_name,
@@ -629,7 +630,7 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
         if uploaded_file.state.name != "ACTIVE":
             print(
                 f"[ERROR] File not ready after {max_wait}s: "
-                f"{build_import_failure_details(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name)}"
+                f"{build_import_context(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name)}"
             )
             return False
         
@@ -637,7 +638,7 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
         if not is_valid_file_search_store_name(actual_store_name):
             print(
                 f"[ERROR] Invalid file search store name: "
-                f"{build_import_failure_details(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name)}"
+                f"{build_import_context(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name)}"
             )
             return False
         

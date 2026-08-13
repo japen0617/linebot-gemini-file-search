@@ -1,6 +1,7 @@
 import unittest
 
 from file_search_store_utils import (
+    build_import_context,
     build_import_failure_details,
     build_import_file_request_body,
     is_valid_file_search_store_name,
@@ -21,6 +22,20 @@ class FileSearchStoreNameTests(unittest.TestCase):
 
     def test_rejects_display_name(self):
         self.assertFalse(is_valid_file_search_store_name("user_u123"))
+
+
+class BuildImportContextTests(unittest.TestCase):
+    def test_includes_store_and_file_state(self):
+        details = build_import_context(
+            actual_store_name="fileSearchStores/store-123",
+            uploaded_file_name="files/file-123",
+            file_state="ACTIVE",
+        )
+
+        self.assertEqual(details["actual_store_name"], "fileSearchStores/store-123")
+        self.assertEqual(details["uploaded_file_name"], "files/file-123")
+        self.assertEqual(details["file_state"], "ACTIVE")
+        self.assertTrue(details["store_name_valid"])
 
 
 class BuildImportFailureDetailsTests(unittest.TestCase):
@@ -50,6 +65,16 @@ class BuildImportFailureDetailsTests(unittest.TestCase):
         self.assertEqual(details["response_text"], "plain text error")
         self.assertNotIn("response_json", details)
         self.assertEqual(details["operation_error"]["message"], "Import failed")
+
+    def test_keeps_empty_response_text(self):
+        details = build_import_failure_details(
+            actual_store_name="fileSearchStores/store-123",
+            uploaded_file_name="files/file-123",
+            file_state="ACTIVE",
+            response_text="",
+        )
+
+        self.assertEqual(details["response_text"], "")
 
 
 if __name__ == "__main__":

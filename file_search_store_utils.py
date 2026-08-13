@@ -14,6 +14,21 @@ def is_valid_file_search_store_name(store_name: str) -> bool:
     return store_name.startswith("fileSearchStores/")
 
 
+def build_import_context(
+    *,
+    actual_store_name: str,
+    uploaded_file_name: str,
+    file_state: str,
+) -> dict[str, Any]:
+    """Build shared import context for logs."""
+    return {
+        "actual_store_name": actual_store_name,
+        "uploaded_file_name": uploaded_file_name,
+        "file_state": file_state,
+        "store_name_valid": is_valid_file_search_store_name(actual_store_name),
+    }
+
+
 def build_import_failure_details(
     *,
     actual_store_name: str,
@@ -24,17 +39,16 @@ def build_import_failure_details(
     operation_error: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Build structured diagnostics for importFile failures."""
-    details: dict[str, Any] = {
-        "actual_store_name": actual_store_name,
-        "uploaded_file_name": uploaded_file_name,
-        "file_state": file_state,
-        "store_name_valid": is_valid_file_search_store_name(actual_store_name),
-    }
+    details = build_import_context(
+        actual_store_name=actual_store_name,
+        uploaded_file_name=uploaded_file_name,
+        file_state=file_state,
+    )
 
     if status_code is not None:
         details["status_code"] = status_code
 
-    if response_text:
+    if response_text is not None:
         details["response_text"] = response_text
         try:
             details["response_json"] = json.loads(response_text)
