@@ -595,6 +595,13 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
             # Cache the mapping
             store_name_cache[store_name] = actual_store_name
 
+        if not is_valid_file_search_store_name(actual_store_name):
+            print(
+                f"[ERROR] Invalid file search store name: "
+                f"{build_import_context(actual_store_name=actual_store_name, uploaded_file_name='pending_upload', file_state='PENDING_UPLOAD')}"
+            )
+            return False
+
         # Get mime_type based on file extension
         file_ext = file_path.suffix.lower()
         mime_type = MIME_TYPE_MAP.get(file_ext)
@@ -635,13 +642,6 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
             return False
         
         print(f"[INFO] File is ACTIVE, proceeding to Step 2...")
-        if not is_valid_file_search_store_name(actual_store_name):
-            print(
-                f"[ERROR] Invalid file search store name: "
-                f"{build_import_context(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name)}"
-            )
-            return False
-        
         # Step 2: Import file to File Search Store using REST API directly
         # Using REST API (not SDK) to ensure API key auth is passed correctly.
         # The SDK's import_file method does not reliably attach the API key,
@@ -696,7 +696,7 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
             print(f"[ERROR] Failed to import file to store: {import_err}")
             response = getattr(import_err, 'response', None)
             print(
-                f"[ERROR] Import response body: "
+                f"[ERROR] Import failure details: "
                 f"{build_import_failure_details(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name, status_code=getattr(response, 'status_code', None), response_text=getattr(response, 'text', None))}"
             )
             return False

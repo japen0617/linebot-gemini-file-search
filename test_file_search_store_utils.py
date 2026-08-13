@@ -50,7 +50,7 @@ class BuildImportFailureDetailsTests(unittest.TestCase):
 
         self.assertEqual(details["status_code"], 400)
         self.assertTrue(details["store_name_valid"])
-        self.assertTrue(details["response_available"])
+        self.assertTrue(details["response_received"])
         self.assertTrue(details["response_json_available"])
         self.assertEqual(details["response_json"]["error"]["message"], "Bad Request")
 
@@ -64,7 +64,7 @@ class BuildImportFailureDetailsTests(unittest.TestCase):
         )
 
         self.assertFalse(details["store_name_valid"])
-        self.assertTrue(details["response_available"])
+        self.assertTrue(details["response_received"])
         self.assertFalse(details["response_json_available"])
         self.assertEqual(details["response_text"], "plain text error")
         self.assertNotIn("response_json", details)
@@ -78,7 +78,7 @@ class BuildImportFailureDetailsTests(unittest.TestCase):
             response_text="",
         )
 
-        self.assertTrue(details["response_available"])
+        self.assertTrue(details["response_received"])
         self.assertFalse(details["response_json_available"])
         self.assertEqual(details["response_text"], "")
 
@@ -99,7 +99,7 @@ class BuildImportFailureDetailsTests(unittest.TestCase):
             file_state="ACTIVE",
         )
 
-        self.assertFalse(details["response_available"])
+        self.assertFalse(details["response_received"])
         self.assertNotIn("response_text", details)
 
 
