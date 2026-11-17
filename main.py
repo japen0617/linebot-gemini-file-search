@@ -98,7 +98,9 @@ if not GOOGLE_API_KEY:
     raise ValueError("Please set GOOGLE_API_KEY via env var or code.")
 
 # Model configuration
-MODEL_NAME = "gemini-3.5-flash"
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-4-hydrogen").strip()
+if not MODEL_NAME:
+    raise ValueError("GEMINI_MODEL must not be empty")
 
 # Initialize GenAI client (Note: File Search API only supports Gemini API, not VertexAI)
 client = genai.Client(api_key=GOOGLE_API_KEY)
@@ -455,7 +457,10 @@ store_name_cache = {}
 citations_cache = {}
 
 
-async def list_documents_in_store(store_name: str) -> list:
+DOCUMENTS_QUERY_ERROR = "⚠️ 目前無法查詢文件庫。\n\n請稍後再試；若問題持續，請檢查服務日誌及 Google API 設定。"
+
+
+async def list_documents_in_store(store_name: str) -> Optional[list]:
     """
     List all documents in a file search store.
     Returns list of document info dicts.
@@ -490,40 +495,37 @@ async def list_documents_in_store(store_name: str) -> list:
 
         print(f"[DEBUG] Using store: {actual_store_name}")
 
-        documents = []
-
-        # Use REST API to list documents (more stable than SDK)
-        print(f"[DEBUG] Using REST API to list documents")
+        # Fetch all API pages before rendering the LINE carousel.
         import requests
         url = f"https://generativelanguage.googleapis.com/v1beta/{actual_store_name}/documents"
-        headers = {'Content-Type': 'application/json'}
-        params = {'key': GOOGLE_API_KEY}
-
-        print(f"[DEBUG] REST API URL: {url}")
-        response = requests.get(url, headers=headers, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-
-        print(f"[DEBUG] REST API returned {len(data.get('documents', []))} documents")
-
-        for doc in data.get('documents', []):
-            documents.append({
-                'name': doc.get('name', 'N/A'),
-                'display_name': doc.get('displayName', 'Unknown'),
-                'create_time': doc.get('createTime', ''),
-                'update_time': doc.get('updateTime', '')
-            })
-            print(f"[DEBUG] File found in store '{store_name}': {doc.get('displayName', 'Unknown')}")
-
-        print(f"[DEBUG] Returning {len(documents)} documents")
-        return documents
+        documents = []
+        page_token = None
+        seen_tokens = set()
+        while True:
+            params = {'key': GOOGLE_API_KEY}
+            if page_token:
+                params['pageToken'] = page_token
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            for doc in data.get('documents', []):
+                documents.append({
+                    'name': doc.get('name', 'N/A'),
+                    'display_name': doc.get('displayName', 'Unknown'),
+                    'create_time': doc.get('createTime', ''),
+                    'update_time': doc.get('updateTime', '')
+                })
+            page_token = data.get('nextPageToken')
+            if not page_token:
+                return documents
+            if page_token in seen_tokens:
+                raise ValueError("Repeated document page token")
+            seen_tokens.add(page_token)
 
     except Exception as e:
-        print(f"[ERROR] Error listing documents in store: {e}")
-        import traceback
-        traceback.print_exc()
-        return []
-
+        # None means query failure; [] means the store genuinely has no documents.
+        print(f"[ERROR] Error listing documents in store: {type(e).__name__}")
+        return None
 
 async def delete_document(document_name: str) -> bool:
     """
@@ -565,7 +567,7 @@ async def delete_document(document_name: str) -> bool:
         return False
 
 
-async def upload_to_file_search_store(file_path: Path, store_name: str, display_name: Optional[str] = None) -> bool:
+async def upload_to_file_search_store(file_path: Path, store_name: str, display_name: Optional[str] = None) -> str:
     """
     Upload a file to Gemini file search store using a two-step process.
     
@@ -591,7 +593,7 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
             success, actual_store_name = await ensure_file_search_store_exists(store_name)
             if not success:
                 print(f"Failed to ensure store '{store_name}' exists")
-                return False
+                return "failed"
             # Cache the mapping
             store_name_cache[store_name] = actual_store_name
 
@@ -600,7 +602,7 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
                 f"[ERROR] Invalid file search store name: "
                 f"{build_import_context(actual_store_name=actual_store_name, uploaded_file_name='pending_upload', file_state='PENDING_UPLOAD')}"
             )
-            return False
+            return "failed"
 
         # Get mime_type based on file extension
         file_ext = file_path.suffix.lower()
@@ -639,7 +641,7 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
                 f"[ERROR] File not ready after {max_wait}s: "
                 f"{build_import_context(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name)}"
             )
-            return False
+            return "failed"
         
         print(f"[INFO] File is ACTIVE, proceeding to Step 2...")
         # Step 2: Import file to File Search Store using REST API directly
@@ -666,6 +668,10 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
             operation_data = import_response.json()
             print(f"[INFO] Import operation started: {operation_data.get('name', 'unknown')}")
 
+            # A completed response may be returned immediately.
+            if operation_data.get('done'):
+                return "failed" if operation_data.get('error') else "success"
+
             # Poll the long-running operation until done
             op_name = operation_data.get('name')
             max_import_wait = 60
@@ -684,13 +690,16 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
                                 f"[ERROR] Import operation failed: "
                                 f"{build_import_failure_details(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name, status_code=op_resp.status_code, response_text=op_resp.text, operation_error=op_data['error'])}"
                             )
-                            return False
+                            return "failed"
                         print(f"[SUCCESS] File imported to store: {store_name}")
-                        return True
+                        return "success"
                     print(f"[INFO] Import operation in progress (waited {import_elapsed}s)...")
 
-            print(f"[WARNING] Import operation still in progress after {max_import_wait}s, but file may be available")
-            return True
+            if not op_name:
+                print("[ERROR] Import response has no operation name")
+                return "failed"
+            print(f"[WARNING] Import operation still in progress after {max_import_wait}s")
+            return "pending"
 
         except Exception as import_err:
             print(f"[ERROR] Failed to import file to store: {import_err}")
@@ -699,7 +708,7 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
                 f"[ERROR] Import failure details: "
                 f"{build_import_failure_details(actual_store_name=actual_store_name, uploaded_file_name=uploaded_file.name, file_state=uploaded_file.state.name, status_code=getattr(response, 'status_code', None), response_text=getattr(response, 'text', None))}"
             )
-            return False
+            return "failed"
 
     except Exception as e:
         error_msg = str(e)
@@ -712,7 +721,7 @@ async def upload_to_file_search_store(file_path: Path, store_name: str, display_
 
         import traceback
         traceback.print_exc()
-        return False
+        return "failed"
 
 
 async def query_file_search(query: str, store_name: str) -> tuple[str, list]:
@@ -741,7 +750,8 @@ async def query_file_search(query: str, store_name: str) -> tuple[str, list]:
                         print(f"Found store for query: {actual_store_name}")
                         break
             except Exception as list_error:
-                print(f"Error listing stores: {list_error}")
+                print(f"Error listing stores: {type(list_error).__name__}")
+                return (DOCUMENTS_QUERY_ERROR, [])
 
         if not actual_store_name:
             # Store doesn't exist - guide user to upload files
@@ -801,7 +811,7 @@ async def query_file_search(query: str, store_name: str) -> tuple[str, list]:
         print(f"Error querying file search: {e}")
         # Check if error is related to missing store
         if "not found" in str(e).lower() or "does not exist" in str(e).lower():
-            return ("📁 您還沒有上傳任何檔案。\n\n請先傳送文件檔案（PDF、DOCX、TXT 等）給我，上傳完成後就可以開始提問了！\n\n💡 提示：如果您想分析圖片，請直接傳送圖片給我，我會立即為您分析。", [])
+            return (DOCUMENTS_QUERY_ERROR, [])
         return (f"查詢時發生錯誤：{str(e)}", [])
 
 
@@ -823,6 +833,8 @@ async def query_file_search_with_session(query: str, user_id: str, store_name: s
 
         # Step 1: Check if user has uploaded any documents
         documents = await list_documents_in_store(store_name)
+        if documents is None:
+            return (DOCUMENTS_QUERY_ERROR, [])
         print(f"[INFO] Found {len(documents)} documents in store")
 
         if len(documents) == 0:
@@ -1078,7 +1090,7 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
     upload_file_path = converted_file_path if converted_file_path else file_path
 
     # Upload to file search store
-    success = await upload_to_file_search_store(upload_file_path, store_name, file_name)
+    upload_status = await upload_to_file_search_store(upload_file_path, store_name, file_name)
 
     # Clean up local files
     try:
@@ -1088,7 +1100,7 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
     except Exception as e:
         print(f"Error deleting file: {e}")
 
-    if success:
+    if upload_status == "success":
         # Create Quick Reply buttons for common actions with specific file name
         # Using Postback instead of MessageAction for better Group chat support
         quick_reply = QuickReply(items=[
@@ -1111,6 +1123,9 @@ async def handle_document_message(event: MessageEvent, message: FileMessage):
             quick_reply=quick_reply
         )
         await bot_api.push_message(reply_target, success_msg)
+    elif upload_status == "pending":
+        pending_msg = TextSendMessage(text=f"⏳ 文件仍在處理中，尚未確認完成。\n檔案名稱：{file_name}\n\n請稍後透過「列出文件」確認，暫時不要重複上傳。")
+        await bot_api.push_message(reply_target, pending_msg)
     else:
         # Provide more helpful error message
         error_text = f"""❌ 檔案上傳失敗
@@ -1156,16 +1171,20 @@ async def send_files_carousel(event, documents: list, page: int = 1, store_name:
         store_name: Store name for pagination postback actions
     """
     bot_api = await get_line_bot_api()
+    if documents is None:
+        await bot_api.reply_message(event.reply_token, TextSendMessage(text=DOCUMENTS_QUERY_ERROR))
+        return
     if not documents:
         no_files_msg = TextSendMessage(text="📁 目前沒有任何文件。\n\n請先上傳文件檔案，就可以查詢囉！")
         await bot_api.reply_message(event.reply_token, no_files_msg)
         return
 
-    # 分頁設定：每頁最多 11 個檔案，第 12 個位置留給分頁控制
-    page_size = 11
+    # 分頁設定：每頁 10 個檔案，另加一個分頁控制
+    page_size = 10
     total_docs = len(documents)
     total_pages = (total_docs + page_size - 1) // page_size  # 向上取整
 
+    page = max(1, min(page, total_pages))
     # 計算當前頁的檔案範圍
     start_idx = (page - 1) * page_size
     end_idx = min(start_idx + page_size, total_docs)
@@ -1407,7 +1426,7 @@ async def handle_postback(event: PostbackEvent):
 
             print(f"[DEBUG] Postback list_files action for store: {store}, page: {page}")
             documents = await list_documents_in_store(store)
-            print(f"[DEBUG] Postback list_documents_in_store returned {len(documents)} documents")
+            print("[DEBUG] Postback document list retrieved" if documents is not None else "[ERROR] Postback document list failed")
             await send_files_carousel(event, documents, page=page, store_name=store)
 
         elif action == 'view_citation':
@@ -1495,7 +1514,7 @@ async def handle_text_message(event: MessageEvent, message, bot_user_id: str = '
         print(f"[DEBUG] Store name: {store_name}")
         # Show files carousel with delete buttons
         documents = await list_documents_in_store(store_name)
-        print(f"[DEBUG] list_documents_in_store returned {len(documents)} documents")
+        print("[DEBUG] Document list retrieved" if documents is not None else "[ERROR] Document list failed")
         await send_files_carousel(event, documents, page=1, store_name=store_name)
         return
 
