@@ -20,7 +20,7 @@
 | `ChannelSecret` | LINE Bot Channel Secret | ✅ |
 | `ChannelAccessToken` | LINE Bot Channel Access Token | ✅ |
 | `GOOGLE_API_KEY` | Google Gemini API Key | ✅ |
-| `GEMINI_MODEL` | Gemini 模型 ID；未設定時為 `gemini-3.5-flash`，空白值不允許 | 選填 |
+| `GEMINI_MODEL` | Gemini 模型 ID；未設定時為 `gemini-4-hydrogen`，空白值不允許 | 選填 |
 
 ### 取得環境變數值
 

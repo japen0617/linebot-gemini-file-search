@@ -3,10 +3,10 @@
 可透過環境變數 `GEMINI_MODEL` 設定文件問答及圖片分析使用的模型：
 
 ```bash
-export GEMINI_MODEL=gemini-3.5-flash
+export GEMINI_MODEL=gemini-4-hydrogen
 ```
 
-未設定時沿用原預設值 `gemini-3.5-flash`；空白值會在啟動時報錯。更換模型前請確認帳號可用，且支援 Gemini API File Search 與圖片輸入。變更環境變數後需重新啟動或重新部署。
+未設定時使用預設值 `gemini-4-hydrogen`；空白值會在啟動時報錯。更換模型前請確認帳號可用，且支援 Gemini API File Search 與圖片輸入。變更環境變數後需重新啟動或重新部署。
 
 文件清單會讀取所有 API 分頁，每頁顯示 10 份；查詢失敗會顯示錯誤，不會誤認為沒有文件。匯入仍在處理中時請稍後檢查清單，避免重複上傳。
 

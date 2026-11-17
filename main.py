@@ -98,7 +98,7 @@ if not GOOGLE_API_KEY:
     raise ValueError("Please set GOOGLE_API_KEY via env var or code.")
 
 # Model configuration
-MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.5-flash").strip()
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-4-hydrogen").strip()
 if not MODEL_NAME:
     raise ValueError("GEMINI_MODEL must not be empty")
 
